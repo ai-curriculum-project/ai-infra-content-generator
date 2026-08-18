@@ -50,3 +50,22 @@ def test_calibration_corpus_path_default_vs_domain(tmp_path):
     assert calibration_corpus_path("ai-infra", tmp_path) == tmp_path / "calibration" / "corpus"
     assert calibration_corpus_path(None, tmp_path) == tmp_path / "calibration" / "corpus"
     assert calibration_corpus_path("ml-engineering", tmp_path) == tmp_path / "calibration" / "ml-engineering" / "corpus"
+
+
+def test_existing_domains_stay_pair_model() -> None:
+    """Regression: the single-repo model change must not alter live domains.
+
+    Every role in the four shipping domains must remain a learning+solutions
+    pair with a real solution repo, so the nightly pipeline behaves identically.
+    """
+    from aicg.org_config import load_manifest
+
+    for domain in ("ai-engineering", "ai-governance", "ml-engineering"):
+        manifest = load_manifest(domain_config_path(domain))
+        assert manifest.roles, domain
+        for role in manifest.roles:
+            assert role.is_single is False, f"{domain}:{role.id} became single"
+            assert role.solution_repo, f"{domain}:{role.id} lost its solution repo"
+            assert role.repos == (role.learning_repo, role.solution_repo)
+        # solution repos still enumerated one-per-role
+        assert len(manifest.solution_repo_names) == len(manifest.roles)
