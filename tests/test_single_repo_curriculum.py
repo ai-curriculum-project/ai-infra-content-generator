@@ -105,3 +105,71 @@ def test_pair_without_solution_repo_rejected(tmp_path):
     )
     with pytest.raises(ManifestError):
         load_manifest(p)
+
+
+def test_bootstrap_single_repo_writes_one_tree(tmp_path):
+    from aicg.bootstrap import bootstrap_role
+
+    p = _write(
+        tmp_path,
+        [
+            {
+                "id": "founder-ceo",
+                "title": "Founder / CEO",
+                "level": 20,
+                "learning_repo": "founder-ceo-curriculum",
+                "repo_model": "single",
+            }
+        ],
+    )
+    m = load_manifest(p)
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    report = bootstrap_role(
+        manifest=m,
+        workspace=ws,
+        role_id="founder-ceo",
+        title="Founder / CEO",
+        level=20,
+        write_manifest=False,
+        state_dir=tmp_path / "state",
+    )
+    curriculum = ws / "founder-ceo-curriculum"
+    assert (curriculum / "README.md").exists()
+    assert (curriculum / "CURRICULUM.md").exists()
+    assert (curriculum / "exemplars" / "README.md").exists()
+    assert (curriculum / "lessons" / "README.md").exists()
+    assert not (ws / "founder-ceo-solutions").exists()
+    assert report["plan"]["solution_repo"] is None
+    assert report["plan"]["solution_path"] is None
+
+
+def test_bootstrap_pair_repo_still_writes_two_trees(tmp_path):
+    from aicg.bootstrap import bootstrap_role
+
+    p = _write(
+        tmp_path,
+        [
+            {
+                "id": "engineer",
+                "title": "Engineer",
+                "level": 20,
+                "learning_repo": "engineer-learning",
+                "solution_repo": "engineer-solutions",
+            }
+        ],
+    )
+    m = load_manifest(p)
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    bootstrap_role(
+        manifest=m,
+        workspace=ws,
+        role_id="engineer",
+        title="Engineer",
+        level=20,
+        write_manifest=False,
+        state_dir=tmp_path / "state",
+    )
+    assert (ws / "engineer-learning" / "README.md").exists()
+    assert (ws / "engineer-solutions" / "README.md").exists()

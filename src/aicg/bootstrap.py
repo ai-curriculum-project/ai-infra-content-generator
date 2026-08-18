@@ -59,9 +59,9 @@ class BootstrapPlan:
     title: str
     level: int
     learning_repo: str
-    solution_repo: str
+    solution_repo: str | None
     learning_path: Path
-    solution_path: Path
+    solution_path: Path | None
     prompt_path: Path
 
     def to_dict(self) -> dict[str, Any]:
@@ -72,7 +72,7 @@ class BootstrapPlan:
             "learning_repo": self.learning_repo,
             "solution_repo": self.solution_repo,
             "learning_path": str(self.learning_path),
-            "solution_path": str(self.solution_path),
+            "solution_path": str(self.solution_path) if self.solution_path else None,
             "prompt_path": str(self.prompt_path),
         }
 
@@ -97,16 +97,18 @@ def bootstrap_role(
         )
 
     learning_repo, solution_repo = _resolve_repo_names(manifest, role_id)
+    is_single = solution_repo is None
     org = manifest.org
     org_display = _org_display(org)
     site_banner = _site_banner(org)
     maintained_footer = _maintained_footer(manifest)
     workspace = workspace.resolve()
     learning_path = workspace / learning_repo
-    solution_path = workspace / solution_repo
+    solution_path = None if is_single else workspace / solution_repo
 
     if not overwrite:
-        for path in (learning_path, solution_path):
+        candidate_paths = [learning_path] if is_single else [learning_path, solution_path]
+        for path in candidate_paths:
             if path.exists() and any(path.iterdir()):
                 raise BootstrapError(
                     f"Target path already exists with content: {path}. "
@@ -114,7 +116,8 @@ def bootstrap_role(
                 )
 
     learning_path.mkdir(parents=True, exist_ok=True)
-    solution_path.mkdir(parents=True, exist_ok=True)
+    if solution_path is not None:
+        solution_path.mkdir(parents=True, exist_ok=True)
 
     description = description or f"Curriculum for the {title} role."
     files_written: list[str] = []
@@ -123,16 +126,23 @@ def bootstrap_role(
         org=org,
         org_display=org_display,
         learning_repo=learning_repo,
-        solution_repo=solution_repo,
+        # Single-repo curricula have no separate solutions repo; point the
+        # skeleton's cross-links back at the one curriculum repo.
+        solution_repo=solution_repo or learning_repo,
         site_banner=site_banner,
         maintained_footer=maintained_footer,
     )
-    files_written.extend(
-        _write_learning_skeleton(learning_path, role_id, title, description, ctx)
-    )
-    files_written.extend(
-        _write_solutions_skeleton(solution_path, role_id, title, description, ctx)
-    )
+    if is_single:
+        files_written.extend(
+            _write_single_skeleton(learning_path, role_id, title, description, ctx)
+        )
+    else:
+        files_written.extend(
+            _write_learning_skeleton(learning_path, role_id, title, description, ctx)
+        )
+        files_written.extend(
+            _write_solutions_skeleton(solution_path, role_id, title, description, ctx)
+        )
 
     state_root = state_dir_for_manifest(manifest, state_dir)
     bootstrap_dir = state_root / "bootstrap"
@@ -222,10 +232,10 @@ def _org_display(org: str) -> str:
     return _ORG_DISPLAY.get(base.lower(), base.replace("-", " ").title())
 
 
-def _resolve_repo_names(manifest: OrgManifest, role_id: str) -> tuple[str, str]:
+def _resolve_repo_names(manifest: OrgManifest, role_id: str) -> tuple[str, str | None]:
     """Repo names for ``role_id`` — from the manifest if present, else by
     the org's naming convention (ai-infra keeps its legacy prefix; sibling
-    orgs drop it)."""
+    orgs drop it). ``solution_repo`` is ``None`` for single-repo curricula."""
     for role in manifest.roles:
         if role.id == role_id:
             return role.learning_repo, role.solution_repo
@@ -353,6 +363,28 @@ def _write_learning_skeleton(
         _write(
             repo_path / "projects" / "README.md",
             "# Projects\n\nCapstones live here as `projects/project-XXX-name/`.\n",
+        )
+    )
+    return written
+
+
+def _write_single_skeleton(
+    repo_path: Path, role_id: str, title: str, description: str, ctx: _SkeletonContext
+) -> list[str]:
+    """Scaffold a single ``*-curriculum`` repo (startup-domain model).
+
+    Reuses the learning skeleton (lessons/projects/CURRICULUM/CI/etc.) and adds
+    an ``exemplars/`` tree where worked founder artifacts (cap tables, runway
+    models, pitch narratives) live in-repo — there is no separate solutions repo.
+    """
+    written = _write_learning_skeleton(repo_path, role_id, title, description, ctx)
+    written.append(
+        _write(
+            repo_path / "exemplars" / "README.md",
+            "# Exemplars\n\nWorked founder artifacts for this curriculum's "
+            "exercises live here as `exemplars/mod-XXX-name/`.\n\n"
+            "These are reference deliverables (filled cap tables, runway models, "
+            "investor funnels, pitch narratives), not code solutions.\n",
         )
     )
     return written
@@ -774,10 +806,10 @@ def _create_github_repos(
     manifest: OrgManifest, plan: BootstrapPlan
 ) -> dict[str, Any]:
     results: list[dict[str, Any]] = []
-    for repo_name in (plan.learning_repo, plan.solution_repo):
-        repo_path = (
-            plan.learning_path if repo_name.endswith("-learning") else plan.solution_path
-        )
+    repo_targets: list[tuple[str, Path]] = [(plan.learning_repo, plan.learning_path)]
+    if plan.solution_repo and plan.solution_path is not None:
+        repo_targets.append((plan.solution_repo, plan.solution_path))
+    for repo_name, repo_path in repo_targets:
         # `gh repo create --source --push` requires an initialized git repo
         # with at least one commit; the scaffold is just files on disk, so
         # init + commit first. Idempotent: skip init if already a repo.
