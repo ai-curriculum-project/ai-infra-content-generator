@@ -173,3 +173,49 @@ def test_bootstrap_pair_repo_still_writes_two_trees(tmp_path):
     )
     assert (ws / "engineer-learning" / "README.md").exists()
     assert (ws / "engineer-solutions" / "README.md").exists()
+
+
+def test_pairing_audit_skips_single_repo(tmp_path):
+    from aicg.pairing_audit import audit_pairing
+
+    p = _write(
+        tmp_path,
+        [
+            {
+                "id": "founder-ceo",
+                "title": "Founder / CEO",
+                "level": 20,
+                "learning_repo": "founder-ceo-curriculum",
+                "repo_model": "single",
+            }
+        ],
+    )
+    m = load_manifest(p)
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    report = audit_pairing(manifest=m, workspace=ws, state_dir=tmp_path / "state")
+    roles = {r["role"]: r for r in report["roles"]}
+    assert roles["founder-ceo"]["status"] == "skipped"
+    assert "single-repo" in roles["founder-ceo"]["reason"]
+
+
+def test_org_profile_renders_single_repo_row(tmp_path):
+    from aicg.domain_provision import render_org_profile
+
+    p = _write(
+        tmp_path,
+        [
+            {
+                "id": "founder-ceo",
+                "title": "Founder / CEO",
+                "level": 20,
+                "learning_repo": "founder-ceo-curriculum",
+                "repo_model": "single",
+            }
+        ],
+    )
+    m = load_manifest(p)
+    md = render_org_profile(m, tagline=None)
+    assert "founder-ceo-curriculum" in md
+    # single repo → no bogus ".../None" solutions link
+    assert "/None" not in md

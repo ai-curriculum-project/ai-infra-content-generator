@@ -31,7 +31,7 @@ class _RoleRow:
     title: str
     level: int
     learning_repo: str
-    solution_repo: str
+    solution_repo: str | None
 
 
 def _org_display(org: str) -> str:
@@ -75,11 +75,13 @@ def render_org_profile(manifest: Any, *, tagline: str | None = None) -> str:
     out.append("|------|-------|--------------|")
     for r in rows:
         learn = f"https://github.com/{org}/{r.learning_repo}"
-        sol = f"https://github.com/{org}/{r.solution_repo}"
-        out.append(
-            f"| **{r.title}** | L{r.level} | "
-            f"[📘 Learning]({learn}) · [✅ Solutions]({sol}) |"
-        )
+        if r.solution_repo:
+            sol = f"https://github.com/{org}/{r.solution_repo}"
+            repos = f"[📘 Learning]({learn}) · [✅ Solutions]({sol})"
+        else:
+            # Single-repo curriculum: one repo, exemplars live in-repo.
+            repos = f"[📗 Curriculum]({learn})"
+        out.append(f"| **{r.title}** | L{r.level} | {repos} |")
     out.append("")
     out.append("## 📈 Career Progression\n")
     out.append(

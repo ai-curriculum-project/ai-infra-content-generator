@@ -76,6 +76,16 @@ def audit_pairing(
     role_reports: list[dict[str, Any]] = []
     all_findings: list[PairingFinding] = []
     for role in sorted(manifest.roles, key=lambda r: r.level):
+        if role.is_single or not role.solution_repo:
+            # Single-repo curricula have no learning/solutions pair to reconcile.
+            role_reports.append(
+                {
+                    "role": role.id,
+                    "status": "skipped",
+                    "reason": "single-repo curriculum (no pair to audit)",
+                }
+            )
+            continue
         learning_path = workspace / role.learning_repo
         solution_path = workspace / role.solution_repo
         if not learning_path.exists() or not solution_path.exists():
