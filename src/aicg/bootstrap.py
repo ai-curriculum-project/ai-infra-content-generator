@@ -840,44 +840,73 @@ def _create_github_repos(
     repo_targets: list[tuple[str, Path]] = [(plan.learning_repo, plan.learning_path)]
     if plan.solution_repo and plan.solution_path is not None:
         repo_targets.append((plan.solution_repo, plan.solution_path))
+    branch = (manifest.release or {}).get("branch") or "main"
     for repo_name, repo_path in repo_targets:
-        # `gh repo create --source --push` requires an initialized git repo
-        # with at least one commit; the scaffold is just files on disk, so
-        # init + commit first. Idempotent: skip init if already a repo.
+        # gh repo create needs an initialized git repo with a commit; the
+        # scaffold is just files on disk, so init + commit first. Idempotent:
+        # skip init if already a repo.
         init_err = _git_init_commit(repo_path)
         if init_err is not None:
             results.append(
                 {
                     "repo": repo_name,
+                    "step": "git_init",
                     "returncode": init_err.returncode,
                     "stdout": init_err.stdout[-2000:],
                     "stderr": init_err.stderr[-2000:],
                 }
             )
             continue
-        completed = subprocess.run(
-            [
-                "gh",
-                "repo",
-                "create",
-                f"{manifest.org}/{repo_name}",
-                "--public",
-                "--source",
-                str(repo_path),
-                "--remote",
-                "origin",
-                "--push",
-            ],
+
+        # Create the empty remote. We do NOT use `gh repo create --push`: it
+        # has proved unreliable (creates the repo but silently leaves it empty),
+        # so the explicit `git push` below is the source of truth. Re-runs where
+        # the repo already exists are treated as success and fall through to the
+        # push, which makes the whole operation idempotent.
+        created = subprocess.run(
+            ["gh", "repo", "create", f"{manifest.org}/{repo_name}", "--public"],
             capture_output=True,
             text=True,
             check=False,
         )
+        already_exists = "already exists" in (created.stderr or "").lower()
+        if created.returncode != 0 and not already_exists:
+            results.append(
+                {
+                    "repo": repo_name,
+                    "step": "gh_create",
+                    "returncode": created.returncode,
+                    "stdout": created.stdout[-2000:],
+                    "stderr": created.stderr[-2000:],
+                }
+            )
+            continue
+
+        # Point origin at the repo over gh's authenticated HTTPS (works on any
+        # host where gh is logged in, unlike the manifest's SSH default_remote).
+        remote_url = f"https://github.com/{manifest.org}/{repo_name}.git"
+        subprocess.run(
+            ["git", "remote", "remove", "origin"],
+            cwd=str(repo_path), capture_output=True, text=True, check=False,
+        )
+        subprocess.run(
+            ["git", "remote", "add", "origin", remote_url],
+            cwd=str(repo_path), capture_output=True, text=True, check=False,
+        )
+        # The explicit, verifiable push. Idempotent: a no-op if already pushed.
+        pushed = subprocess.run(
+            ["git", "push", "-u", "origin", f"HEAD:{branch}"],
+            cwd=str(repo_path), capture_output=True, text=True, check=False,
+        )
         results.append(
             {
                 "repo": repo_name,
-                "returncode": completed.returncode,
-                "stdout": completed.stdout[-2000:],
-                "stderr": completed.stderr[-2000:],
+                "step": "push" if pushed.returncode != 0 else "ok",
+                "returncode": pushed.returncode,
+                "created": created.returncode == 0,
+                "already_existed": already_exists,
+                "stdout": pushed.stdout[-2000:],
+                "stderr": pushed.stderr[-2000:],
             }
         )
     return {"actions": results}

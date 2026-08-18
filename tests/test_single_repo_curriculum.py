@@ -179,6 +179,54 @@ def test_bootstrap_pair_repo_still_writes_two_trees(tmp_path):
     assert (ws / "engineer-solutions" / "README.md").exists()
 
 
+def test_create_github_repos_pushes_explicitly(tmp_path, monkeypatch):
+    """Regression: bootstrap must push explicitly, not rely on `gh ... --push`
+    (which created repos but left them empty). Mocks git/gh subprocess calls."""
+    import subprocess as _sp
+
+    from aicg import bootstrap
+    from aicg.bootstrap import BootstrapPlan, _create_github_repos
+
+    p = _write(
+        tmp_path,
+        [
+            {
+                "id": "founder-ceo",
+                "title": "Founder / CEO",
+                "level": 20,
+                "learning_repo": "founder-ceo-curriculum",
+                "repo_model": "single",
+            }
+        ],
+    )
+    m = load_manifest(p)
+    repo_dir = tmp_path / "founder-ceo-curriculum"
+    (repo_dir / ".git").mkdir(parents=True)  # pretend already a git repo
+
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, *args, **kwargs):
+        calls.append(list(cmd))
+        return _sp.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(bootstrap.subprocess, "run", fake_run)
+
+    plan = BootstrapPlan(
+        role_id="founder-ceo", title="Founder / CEO", level=20,
+        learning_repo="founder-ceo-curriculum", solution_repo=None,
+        learning_path=repo_dir, solution_path=None, prompt_path=tmp_path / "p.md",
+    )
+    report = _create_github_repos(m, plan)
+
+    gh_create = [c for c in calls if c[:3] == ["gh", "repo", "create"]]
+    assert gh_create, "gh repo create was not invoked"
+    assert all("--push" not in c for c in gh_create), "must not rely on gh --push"
+    git_push = [c for c in calls if c[:2] == ["git", "push"]]
+    assert any("HEAD:main" in c for c in git_push), "expected explicit git push to HEAD:main"
+    assert report["actions"][0]["returncode"] == 0
+    assert report["actions"][0]["step"] == "ok"
+
+
 def test_pairing_audit_skips_single_repo(tmp_path):
     from aicg.pairing_audit import audit_pairing
 
