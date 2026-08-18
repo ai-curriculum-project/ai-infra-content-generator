@@ -219,3 +219,88 @@ def test_org_profile_renders_single_repo_row(tmp_path):
     assert "founder-ceo-curriculum" in md
     # single repo → no bogus ".../None" solutions link
     assert "/None" not in md
+
+
+def test_list_roles_with_repos_tab_format(tmp_path, capsys):
+    import argparse
+
+    from aicg.cli import cmd_org_list_roles
+
+    p = _write(
+        tmp_path,
+        [
+            {
+                "id": "founder-ceo",
+                "title": "Founder / CEO",
+                "level": 20,
+                "learning_repo": "founder-ceo-curriculum",
+                "repo_model": "single",
+            },
+            {
+                "id": "engineer",
+                "title": "Engineer",
+                "level": 10,
+                "learning_repo": "engineer-learning",
+                "solution_repo": "engineer-solutions",
+            },
+        ],
+    )
+    args = argparse.Namespace(manifest=p, with_repos=True)
+    assert cmd_org_list_roles(args) == 0
+    lines = capsys.readouterr().out.strip().splitlines()
+    # sorted by level: engineer (10) then founder-ceo (20)
+    assert lines[0] == "engineer\tengineer-learning\tengineer-solutions\tpair"
+    assert lines[1] == "founder-ceo\tfounder-ceo-curriculum\t-\tsingle"
+
+
+def test_list_roles_bare_still_ids_only(tmp_path, capsys):
+    import argparse
+
+    from aicg.cli import cmd_org_list_roles
+
+    p = _write(
+        tmp_path,
+        [
+            {
+                "id": "founder-ceo",
+                "title": "Founder / CEO",
+                "level": 20,
+                "learning_repo": "founder-ceo-curriculum",
+                "repo_model": "single",
+            }
+        ],
+    )
+    args = argparse.Namespace(manifest=p, with_repos=False)
+    assert cmd_org_list_roles(args) == 0
+    assert capsys.readouterr().out.strip() == "founder-ceo"
+
+
+def test_org_review_single_repo_no_none_path(tmp_path):
+    """Per-role review must not build `workspace / None` for single-repo roles."""
+    import argparse
+
+    from aicg.cli import cmd_org_review
+
+    p = _write(
+        tmp_path,
+        [
+            {
+                "id": "founder-ceo",
+                "title": "Founder / CEO",
+                "level": 20,
+                "learning_repo": "founder-ceo-curriculum",
+                "repo_model": "single",
+            }
+        ],
+    )
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    args = argparse.Namespace(
+        manifest=p,
+        role="founder-ceo",
+        workspace=ws,
+        state_dir=tmp_path / "state",
+        max_artifacts=1,
+    )
+    # Repo dir absent → skipped cleanly; the fix means no TypeError on `/ None`.
+    assert cmd_org_review(args) == 0

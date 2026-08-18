@@ -463,6 +463,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print role ids from the manifest, one per line (for shell loops).",
     )
     add_org_args(org_list_roles)
+    org_list_roles.add_argument(
+        "--with-repos",
+        action="store_true",
+        help="Print tab-separated 'id<TAB>learning_repo<TAB>solution_repo|-<TAB>repo_model' "
+        "per role (for the timer installer). Solution column is '-' for single-repo curricula.",
+    )
     org_list_roles.set_defaults(func=cmd_org_list_roles)
 
     org_audit_learning = org_subparsers.add_parser(
@@ -1923,12 +1929,12 @@ def cmd_org_review(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
-        # Both learning and solutions repos. The freshness rubric
-        # (api_currency / version_currency / citation_validity /
-        # hardware_currency) matters more for learner-facing content
-        # (lecture notes, exercise prompts) than for solutions, but
-        # both should be judged.
-        repos_to_review = [role.learning_repo, role.solution_repo]
+        # Both learning and solutions repos (or the single curriculum repo for
+        # single-repo curricula — `role.repos` yields the right set). The
+        # freshness rubric (api_currency / version_currency / citation_validity
+        # / hardware_currency) matters more for learner-facing content (lecture
+        # notes, exercise prompts) than for solutions, but both should be judged.
+        repos_to_review = list(role.repos)
     else:
         # Legacy org-wide mode (called by aicg-monthly-review.timer,
         # which is now disabled in favor of per-role timers). Walk
@@ -2141,8 +2147,14 @@ def cmd_org_audit_profile(args: argparse.Namespace) -> int:
 
 def cmd_org_list_roles(args: argparse.Namespace) -> int:
     manifest = resolve_manifest(args)
+    with_repos = getattr(args, "with_repos", False)
     for role in sorted(manifest.roles, key=lambda item: item.level):
-        print(role.id)
+        if with_repos:
+            print(
+                f"{role.id}\t{role.learning_repo}\t{role.solution_repo or '-'}\t{role.repo_model}"
+            )
+        else:
+            print(role.id)
     return 0
 
 
