@@ -131,6 +131,7 @@ def bootstrap_role(
         solution_repo=solution_repo or learning_repo,
         site_banner=site_banner,
         maintained_footer=maintained_footer,
+        is_single=is_single,
     )
     if is_single:
         files_written.extend(
@@ -208,6 +209,9 @@ class _SkeletonContext:
     solution_repo: str
     site_banner: str
     maintained_footer: str
+    # True for single-repo curricula (no separate solutions repo; exemplars
+    # live in-repo). Threaded into the README so the layout/links are correct.
+    is_single: bool = False
 
 
 # Display names for the curriculum-family orgs. Falls back to a title-cased
@@ -508,6 +512,32 @@ def _write(path: Path, content: str) -> str:
 
 
 def _learning_readme(title: str, description: str, ctx: _SkeletonContext) -> str:
+    if ctx.is_single:
+        heading = f"# {ctx.org_display} · {title} — Curriculum\n\n"
+        layout = (
+            "## Layout\n\n"
+            "```\n"
+            f"{ctx.learning_repo}/\n"
+            "├── lessons/mod-XXX-*/        modules with lectures, exercises, labs, quizzes\n"
+            "├── exemplars/mod-XXX-*/      worked reference deliverables (not code solutions)\n"
+            "├── projects/project-XXX-*/   multi-module capstones\n"
+            "├── CURRICULUM.md             role-level coverage map\n"
+            "├── PREREQUISITES.md          assumed entry skills\n"
+            "├── VERSIONS.md               release history\n"
+            "└── README.md                 this file\n"
+            "```\n\n"
+        )
+        last_section = (
+            "## Exemplars\n\n"
+            "This is a single-repo curriculum: worked reference deliverables live "
+            "in-repo under [`exemplars/`](./exemplars), not in a separate solutions repo.\n"
+        )
+        return f"{heading}{ctx.site_banner}{description}\n\n" + (
+            "> **Status**: scaffolded by `aicg org bootstrap-role`. The curriculum is "
+            "not authored yet. Run `aicg org research` and `aicg org daily` to drive "
+            "the autonomous fill-in loop.\n\n"
+        ) + layout + last_section + ctx.maintained_footer
+
     sol_url = f"https://github.com/{ctx.org}/{ctx.solution_repo}"
     return (
         f"# {ctx.org_display} · {title} — Learning Repository\n\n"

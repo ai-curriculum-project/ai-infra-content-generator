@@ -142,6 +142,10 @@ def test_bootstrap_single_repo_writes_one_tree(tmp_path):
     assert not (ws / "founder-ceo-solutions").exists()
     assert report["plan"]["solution_repo"] is None
     assert report["plan"]["solution_path"] is None
+    # README must not advertise a (nonexistent) paired solutions repo.
+    readme = (curriculum / "README.md").read_text(encoding="utf-8")
+    assert "Paired Solutions Repo" not in readme
+    assert "exemplars/" in readme or "exemplars" in readme
 
 
 def test_bootstrap_pair_repo_still_writes_two_trees(tmp_path):
