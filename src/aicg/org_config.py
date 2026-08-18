@@ -83,7 +83,7 @@ class OrgManifest:
         if url:
             from urllib.parse import urlparse
 
-            host = urlparse(url).netloc.lower().lstrip("www.")
+            host = urlparse(url).netloc.lower().removeprefix("www.")
             if host:
                 refs.add(host)
         return refs

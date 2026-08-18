@@ -52,6 +52,26 @@ def test_calibration_corpus_path_default_vs_domain(tmp_path):
     assert calibration_corpus_path("ml-engineering", tmp_path) == tmp_path / "calibration" / "ml-engineering" / "corpus"
 
 
+def test_ai_startup_domain_loads() -> None:
+    from aicg.domains import list_domains
+    from aicg.org_config import load_manifest
+
+    assert "ai-startup" in list_domains()
+    manifest = load_manifest(domain_config_path("ai-startup"))
+    assert manifest.org == "ai-startup-curriculum"
+    ids = {r.id for r in manifest.roles}
+    assert {
+        "startup-foundations",
+        "founder-ceo",
+        "startup-product-gtm",
+        "startup-finance-fundraising",
+        "startup-operations-governance",
+    } == ids
+    assert all(r.is_single for r in manifest.roles)
+    assert manifest.solution_repo_names == []
+    assert manifest.learning_repo_names[1] == "founder-ceo-curriculum"
+
+
 def test_existing_domains_stay_pair_model() -> None:
     """Regression: the single-repo model change must not alter live domains.
 
