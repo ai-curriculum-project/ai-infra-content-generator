@@ -19,10 +19,26 @@ class RoleConfig:
     title: str
     level: int
     learning_repo: str
-    solution_repo: str
+    # ``solution_repo`` is ``None`` for single-repo curricula
+    # (``repo_model == "single"``); required for the default pair model.
+    solution_repo: str | None = None
     # Alternative/synonym job titles the research cycle should also search,
     # so sparse-title roles still clear the evidence gate.
     aliases: tuple[str, ...] = ()
+    # ``"pair"`` (learning + solutions, the AI-domain default) or ``"single"``
+    # (one ``<name>-curriculum`` repo, the startup-domain model).
+    repo_model: str = "pair"
+
+    @property
+    def is_single(self) -> bool:
+        return self.repo_model == "single"
+
+    @property
+    def repos(self) -> tuple[str, ...]:
+        """The repo name(s) this role owns, in a stable order."""
+        if self.is_single or not self.solution_repo:
+            return (self.learning_repo,)
+        return (self.learning_repo, self.solution_repo)
 
 
 @dataclass(frozen=True)
@@ -76,7 +92,7 @@ class OrgManifest:
     def repo_names(self) -> list[str]:
         names: list[str] = []
         for role in self.roles:
-            names.extend([role.learning_repo, role.solution_repo])
+            names.extend(role.repos)
         names.extend(repo.name for repo in self.extra_repos)
         return list(dict.fromkeys(names))
 
@@ -86,7 +102,7 @@ class OrgManifest:
 
     @property
     def solution_repo_names(self) -> list[str]:
-        return [role.solution_repo for role in self.roles]
+        return [role.solution_repo for role in self.roles if role.solution_repo]
 
     @property
     def release_repo_names(self) -> list[str]:
@@ -117,17 +133,32 @@ def load_manifest(path: Path | None = None) -> OrgManifest:
         raise ManifestError(
             f"Org manifest at {manifest_path} must be a mapping; got {type(raw).__name__}."
         )
-    roles = tuple(
-        RoleConfig(
+    def _role(item: dict[str, Any]) -> RoleConfig:
+        model = item.get("repo_model", "pair")
+        solution = item.get("solution_repo")
+        if model not in ("pair", "single"):
+            raise ManifestError(
+                f"Role {item.get('id')!r}: repo_model must be 'pair' or 'single', got {model!r}."
+            )
+        if model == "single" and solution:
+            raise ManifestError(
+                f"Role {item.get('id')!r}: single repo_model must not set solution_repo."
+            )
+        if model == "pair" and not solution:
+            raise ManifestError(
+                f"Role {item.get('id')!r}: pair repo_model requires a solution_repo."
+            )
+        return RoleConfig(
             id=item["id"],
             title=item["title"],
             level=int(item["level"]),
             learning_repo=item["learning_repo"],
-            solution_repo=item["solution_repo"],
+            solution_repo=solution,
             aliases=tuple(item.get("aliases", []) or ()),
+            repo_model=model,
         )
-        for item in raw.get("roles", [])
-    )
+
+    roles = tuple(_role(item) for item in raw.get("roles", []))
     if not roles:
         raise ManifestError("Org manifest must define at least one role.")
     extra_repos = tuple(
