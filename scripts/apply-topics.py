@@ -28,6 +28,7 @@ DOMAIN_TOPICS = {
     "ml-engineering-curriculum": ["machine-learning", "ml-engineering", "deep-learning", "model-training", "fine-tuning", "llm"],
     "ai-engineering-curriculum": ["ai-engineering", "llm", "ai-agents", "generative-ai", "rag", "prompt-engineering"],
     "ai-governance-curriculum": ["ai-governance", "responsible-ai", "ai-safety", "ai-security", "ai-risk", "ai-compliance"],
+    "ai-startup-curriculum": ["startup", "entrepreneurship", "founders", "fundraising", "venture-capital", "product-management"],
 }
 
 
@@ -47,7 +48,12 @@ def _topic(s: str) -> str:
 
 
 def topics_for(org: str, role_id: str, repo: str) -> list[str]:
-    kind = "solutions" if repo.endswith("-solutions") else "learning"
+    if repo.endswith("-solutions"):
+        kind = "solutions"
+    elif repo.endswith("-curriculum"):
+        kind = "curriculum"
+    else:
+        kind = "learning"
     role_topic = _topic(role_id)
     out: list[str] = []
     for t in SHARED + DOMAIN_TOPICS.get(org, []) + [role_topic, kind]:
@@ -63,7 +69,9 @@ def org_repos() -> list[tuple[str, str, str]]:
         org = data["org"]
         for role in data.get("roles", []):
             rows.append((org, role["id"], role["learning_repo"]))
-            rows.append((org, role["id"], role["solution_repo"]))
+            # Single-repo curricula (repo_model: single) have no solution_repo.
+            if role.get("solution_repo"):
+                rows.append((org, role["id"], role["solution_repo"]))
     return rows
 
 
@@ -87,10 +95,13 @@ def set_topics(org: str, repo: str, topics: list[str]) -> bool:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--org", default=None, help="Only touch repos in this GitHub org (e.g. ai-startup-curriculum).")
     args = ap.parse_args(argv)
 
     changed = same = missing = 0
     for org, role_id, repo in org_repos():
+        if args.org and org != args.org:
+            continue
         want = topics_for(org, role_id, repo)
         have = get_topics(org, repo)
         if have is None:
