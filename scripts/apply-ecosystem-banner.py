@@ -23,14 +23,15 @@ from pathlib import Path
 OPEN = "<!-- aicg:site-banner -->"
 CLOSE = "<!-- /aicg:site-banner -->"
 
-# Unified ecosystem banner. Establishes the four-org federation and keeps the
+# Unified ecosystem banner. Establishes the five-org federation and keeps the
 # cohort/teams funnel (the only live landing site) reachable from every repo.
 BANNER_BODY = (
     "> 🎓 Part of the free, open-source **AI Career Curriculum** ecosystem — "
     "[Infrastructure](https://github.com/ai-infra-curriculum) · "
     "[ML Engineering](https://github.com/ml-engineering-curriculum) · "
     "[AI Engineering](https://github.com/ai-engineering-curriculum) · "
-    "[Governance](https://github.com/ai-governance-curriculum). "
+    "[Governance](https://github.com/ai-governance-curriculum) · "
+    "[Startup](https://github.com/ai-startup-curriculum). "
     "Live cohorts &amp; team programs: "
     "**[ai-infra-curriculum.github.io](https://ai-infra-curriculum.github.io/)**."
 )

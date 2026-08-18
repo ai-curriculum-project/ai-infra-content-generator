@@ -23,6 +23,7 @@ ECOSYSTEM = [
     ("ml-engineering-curriculum", "ML Engineering", "*build & train* the models (data, fine-tuning, pretraining, RLHF, evals)"),
     ("ai-engineering-curriculum", "AI Engineering", "*build with* the models (agentic apps, RAG, multi-agent systems)"),
     ("ai-governance-curriculum", "AI Governance", "*govern & assure* AI (security, compliance, evaluation, safety)"),
+    ("ai-startup-curriculum", "AI Startup", "*turn it into a company* — the startup operating school for technical founders (functional curricula × role pathways × stages)"),
 ]
 
 
@@ -41,6 +42,7 @@ def _org_display(org: str) -> str:
         "ml-engineering": "ML Engineering",
         "ai-engineering": "AI Engineering",
         "ai-governance": "AI Governance",
+        "ai-startup": "AI Startup",
     }
     return special.get(base.lower(), base.replace("-", " ").title())
 
@@ -91,8 +93,8 @@ def render_org_profile(manifest: Any, *, tagline: str | None = None) -> str:
     )
     out.append("## 🔗 Curriculum Family\n")
     out.append(
-        "One of four sibling orgs in the **AI Career Curriculum ecosystem**, "
-        "organized by what you *do* relative to a model:\n"
+        f"One of {len(ECOSYSTEM)} sibling orgs in the **AI Career Curriculum "
+        "ecosystem**, organized by what you *do* relative to a model:\n"
     )
     for sib_org, sib_disp, sib_desc in ECOSYSTEM:
         if sib_org == org:
