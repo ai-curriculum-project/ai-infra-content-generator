@@ -152,6 +152,21 @@
       ]
     },
     {
+      "id": "cto",
+      "title": "Co-Founder / CTO",
+      "level": 25,
+      "repo_model": "single",
+      "learning_repo": "cto-curriculum",
+      "aliases": [
+        "Startup CTO",
+        "Technical Co-Founder",
+        "Founding Engineer",
+        "VP Engineering (startup)",
+        "Head of Engineering (startup)",
+        "Co-Founder & CTO"
+      ]
+    },
+    {
       "id": "startup-product-gtm",
       "title": "Startup Product & GTM",
       "level": 30,
@@ -164,6 +179,20 @@
         "Head of Growth (startup)",
         "Founding Sales & Marketing",
         "Chief Product Officer (startup)"
+      ]
+    },
+    {
+      "id": "cpo",
+      "title": "Founding CPO / Head of Product",
+      "level": 35,
+      "repo_model": "single",
+      "learning_repo": "cpo-curriculum",
+      "aliases": [
+        "Chief Product Officer (startup)",
+        "Founding Product Manager",
+        "Head of Product (early-stage)",
+        "VP Product (startup)",
+        "Founding Product Lead"
       ]
     },
     {
@@ -192,6 +221,21 @@
         "Chief of Staff (startup)",
         "Head of Corporate Governance",
         "Founding Operations"
+      ]
+    },
+    {
+      "id": "startup-exit",
+      "title": "Startup Exit & Endgame",
+      "level": 60,
+      "repo_model": "single",
+      "learning_repo": "startup-exit-curriculum",
+      "aliases": [
+        "Startup M&A",
+        "Startup Acquisition",
+        "IPO Readiness",
+        "Founder Exit",
+        "Secondaries & Liquidity",
+        "Corporate Development (startup)"
       ]
     }
   ]

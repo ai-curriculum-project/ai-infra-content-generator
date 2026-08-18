@@ -63,13 +63,19 @@ def test_ai_startup_domain_loads() -> None:
     assert {
         "startup-foundations",
         "founder-ceo",
+        "cto",
         "startup-product-gtm",
+        "cpo",
         "startup-finance-fundraising",
         "startup-operations-governance",
+        "startup-exit",
     } == ids
     assert all(r.is_single for r in manifest.roles)
     assert manifest.solution_repo_names == []
+    # curricula sorted by level: foundations(10), founder-ceo(20), cto(25)...
     assert manifest.learning_repo_names[1] == "founder-ceo-curriculum"
+    cto = next(r for r in manifest.roles if r.id == "cto")
+    assert cto.learning_repo == "cto-curriculum" and cto.is_single
 
 
 def test_existing_domains_stay_pair_model() -> None:
