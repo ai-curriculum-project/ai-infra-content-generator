@@ -23,17 +23,15 @@ from pathlib import Path
 OPEN = "<!-- aicg:site-banner -->"
 CLOSE = "<!-- /aicg:site-banner -->"
 
-# Unified ecosystem banner. Establishes the five-org federation and keeps the
-# cohort/teams funnel (the only live landing site) reachable from every repo.
+# Unified ecosystem banner. Establishes the five-org federation. (The cohort
+# line was removed 2026-11-02 when the cohort program was canceled.)
 BANNER_BODY = (
     "> 🎓 Part of the free, open-source **AI Career Curriculum** ecosystem — "
     "[Infrastructure](https://github.com/ai-infra-curriculum) · "
     "[ML Engineering](https://github.com/ml-engineering-curriculum) · "
     "[AI Engineering](https://github.com/ai-engineering-curriculum) · "
     "[Governance](https://github.com/ai-governance-curriculum) · "
-    "[Startup](https://github.com/ai-startup-curriculum). "
-    "Live cohorts &amp; team programs: "
-    "**[ai-infra-curriculum.github.io](https://ai-infra-curriculum.github.io/)**."
+    "[Startup](https://github.com/ai-startup-curriculum)."
 )
 BLOCK = f"{OPEN}\n{BANNER_BODY}\n{CLOSE}"
 
@@ -60,8 +58,12 @@ def org_repos() -> list[tuple[str, str]]:
         org = data["org"]
         for role in data.get("roles", []):
             pairs.append((org, role["learning_repo"]))
-            pairs.append((org, role["solution_repo"]))
-    return pairs
+            if role.get("solution_repo"):  # single-repo curricula have none
+                pairs.append((org, role["solution_repo"]))
+        for extra in data.get("extra_repos", []):
+            if extra.get("kind") != "org-profile":  # org pages have their own layout
+                pairs.append((org, extra["name"]))
+    return list(dict.fromkeys(pairs))
 
 
 def _gh_json(args: list[str]) -> dict | None:
@@ -103,6 +105,11 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--apply", action="store_true", help="Commit changes via the API.")
     ap.add_argument("--branch", default="main")
+    ap.add_argument(
+        "--message",
+        default="docs: unify site banner to AI Career Curriculum ecosystem",
+        help="Commit message for each README update.",
+    )
     args = ap.parse_args(argv)
 
     changed = unchanged = missing = 0
@@ -125,7 +132,7 @@ def main(argv: list[str] | None = None) -> int:
         res = subprocess.run(
             [
                 "gh", "api", "-X", "PUT", f"repos/{org}/{repo}/contents/README.md",
-                "-f", "message=docs: unify site banner to AI Career Curriculum ecosystem",
+                "-f", f"message={args.message}",
                 "-f", f"content={b64}",
                 "-f", f"sha={meta['sha']}",
                 "-f", f"branch={args.branch}",

@@ -249,9 +249,8 @@ def _resolve_repo_names(manifest: OrgManifest, role_id: str) -> tuple[str, str |
 
 
 def _site_banner(org: str) -> str:
-    """The unified AI Career Curriculum ecosystem banner — same across all four
-    orgs (it establishes the federation and keeps the only live landing site,
-    ai-infra's cohorts/teams, reachable). Kept in sync with
+    """The unified AI Career Curriculum ecosystem banner — same across all five
+    orgs; it establishes the federation. Kept in sync with
     scripts/apply-ecosystem-banner.py."""
     return (
         "<!-- aicg:site-banner -->\n"
@@ -260,9 +259,7 @@ def _site_banner(org: str) -> str:
         "[ML Engineering](https://github.com/ml-engineering-curriculum) · "
         "[AI Engineering](https://github.com/ai-engineering-curriculum) · "
         "[Governance](https://github.com/ai-governance-curriculum) · "
-        "[Startup](https://github.com/ai-startup-curriculum). "
-        "Live cohorts &amp; team programs: "
-        "**[ai-infra-curriculum.github.io](https://ai-infra-curriculum.github.io/)**.\n"
+        "[Startup](https://github.com/ai-startup-curriculum).\n"
         "<!-- /aicg:site-banner -->\n\n"
     )
 
