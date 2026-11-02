@@ -47,6 +47,9 @@ _RUNNER_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_BATCH = 25
 DEFAULT_LINES_PER_MARKER = 12
 _DIFF_SLACK_LINES = 10
+# Markdown paragraphs are often a single line, so cap added text too.
+_CHARS_PER_MARKER = 1500
+_DIFF_SLACK_CHARS = 500
 
 
 class MarkerError(RuntimeError):
@@ -156,9 +159,17 @@ def build_marker_prompt(
 # --- judging -----------------------------------------------------------------------
 
 
-def _changed_lines(before: str, after: str) -> int:
+def _diff_size(before: str, after: str) -> tuple[int, int]:
+    """(changed lines, characters on added lines) between two texts."""
     diff = difflib.unified_diff(before.splitlines(), after.splitlines(), lineterm="", n=0)
-    return sum(1 for line in diff if line[:1] in "+-" and not line.startswith(("+++", "---")))
+    lines = chars = 0
+    for line in diff:
+        if line.startswith(("+++", "---")) or line[:1] not in "+-":
+            continue
+        lines += 1
+        if line[:1] == "+":
+            chars += len(line) - 1
+    return lines, chars
 
 
 def judge_attempt(
@@ -184,7 +195,8 @@ def judge_attempt(
     resolved = sum(count_markers(before[k]) - count_markers(after[k]) for k in changed)
     if resolved <= 0:
         return Verdict(False, 0, changed, "no marker resolved")
-    lines = sum(_changed_lines(before[k], after[k]) for k in changed)
+    sizes = [_diff_size(before[k], after[k]) for k in changed]
+    lines, chars = sum(x[0] for x in sizes), sum(x[1] for x in sizes)
     budget = lines_per_marker * resolved + _DIFF_SLACK_LINES
     if lines > budget:
         return Verdict(
@@ -192,6 +204,14 @@ def judge_attempt(
             resolved,
             changed,
             f"{lines} lines changed for {resolved} markers (budget {budget})",
+        )
+    char_budget = _CHARS_PER_MARKER * resolved + _DIFF_SLACK_CHARS
+    if chars > char_budget:
+        return Verdict(
+            False,
+            resolved,
+            changed,
+            f"{chars} characters added for {resolved} markers (budget {char_budget})",
         )
     return Verdict(True, resolved, changed)
 
@@ -274,11 +294,10 @@ def _run_unit(
             raise MarkerError(f"real checkout {repo} changed during the agent run; aborting")
         if result.limit_reached:
             raise AgentLimitReached(result)
-        verdict = judge_attempt(
-            _text_files(repo), _text_files(work), {m.path for m in batch}, lines_per_marker
-        )
+        # One snapshot of the copy: judge and write back exactly what was judged.
+        after = _text_files(work)
+        verdict = judge_attempt(_text_files(repo), after, {m.path for m in batch}, lines_per_marker)
         if verdict.accepted and result.returncode == 0:
-            after = _text_files(work)
             for rel in verdict.changed:
                 _safe_write(repo, rel, after[rel])
         elif result.returncode != 0:
