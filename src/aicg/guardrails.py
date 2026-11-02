@@ -7,7 +7,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from .audit import PlaceholderCache, scan_placeholders
+from .audit import _scan_file_for_placeholders, iter_text_files
 
 RESTRICTED_AUTO_MERGE_PATTERNS = (
     ".github/workflows/*",
@@ -25,6 +25,27 @@ class GuardrailDecision:
     allowed: bool
     blockers: tuple[str, ...]
     warnings: tuple[str, ...]
+
+
+def scan_changed_for_markers(repo_path: Path, changed_files: list[str]) -> list[dict]:
+    """Placeholder markers in the files this change touches.
+
+    Only changed files count. Scanning the whole repo meant one old
+    ``needs-research`` marker anywhere blocked every future content PR for
+    that repo (seen in 40 repos, 2026-11), stranding verified work on disk.
+    """
+    findings: list[dict] = []
+    for rel in changed_files:
+        target = repo_path / rel
+        if target.is_dir():
+            files = list(iter_text_files(target))
+        elif target.is_file():
+            files = [target]
+        else:
+            continue  # deleted
+        for path in files:
+            findings.extend(_scan_file_for_placeholders(path, repo_path))
+    return findings
 
 
 def evaluate_guardrails(
@@ -45,9 +66,7 @@ def evaluate_guardrails(
     if force_push:
         blockers.append("Force-push is not allowed by AICG guardrails.")
 
-    cache = PlaceholderCache(repo_path)
-    marker_findings = scan_placeholders(repo_path, cache=cache)
-    cache.save()
+    marker_findings = scan_changed_for_markers(repo_path, changed_files)
     if any(item["type"] == "manual_review" for item in marker_findings):
         blockers.append("Manual-review markers are present.")
     if any(item["type"] == "needs_research" for item in marker_findings):

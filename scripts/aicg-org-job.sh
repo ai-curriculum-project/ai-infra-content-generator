@@ -233,6 +233,34 @@ main() {
       # would analyze old content and base the proposal PR on an old commit.
       run_aicg_org sync
       run_aicg_org research --apply --role "$ROLE"
+      # Research refreshes JOB_REQUIREMENTS.md and may write a
+      # RESEARCH_PROPOSAL_<month>.md without opening a PR (no delta, or nothing
+      # passed the caps). Nothing committed those, so the learning repo stayed
+      # dirty and every later sync/release skipped it (8 ai-infra repos stuck
+      # Aug-Nov 2026). Commit exactly those files on main.
+      RR_LREPO=$(python3 -c "
+import json
+d=json.load(open('$MANIFEST'))
+print(next((r['learning_repo'] for r in d['roles'] if r['id']=='$ROLE'),''))" 2>/dev/null || true)
+      if [[ -n "$RR_LREPO" && -d "$WORKSPACE/$RR_LREPO/.git" ]]; then
+        ( cd "$WORKSPACE/$RR_LREPO"
+          RR_BRANCH=$(git branch --show-current)
+          if [[ "$RR_BRANCH" != "main" ]]; then
+            log "research-role: $RR_LREPO is on '$RR_BRANCH', not main; not committing research files"
+            exit 0
+          fi
+          shopt -s nullglob
+          RR_FILES=(JOB_REQUIREMENTS.md RESEARCH_PROPOSAL_*.md)
+          RR_EXISTING=()
+          for f in "${RR_FILES[@]}"; do [[ -f "$f" ]] && RR_EXISTING+=("$f"); done
+          [[ ${#RR_EXISTING[@]} -gt 0 ]] && git add -- "${RR_EXISTING[@]}"
+          if ! git diff --cached --quiet 2>/dev/null; then
+            git -c user.email="aicg@veriswarm.ai" -c user.name="AICG Runner" \
+              commit -q -m "research: refresh job requirements for $ROLE (aicg research-role)" \
+              && git push -q origin HEAD \
+              && log "research-role: committed research files for $ROLE"
+          fi ) || log "research-role: commit/push of research files failed for $ROLE"
+      fi
       ;;
     seed-role)
       # One-time plan SEEDING for a fresh role. Curriculum-plan changes are

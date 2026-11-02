@@ -171,6 +171,35 @@ def git_changed_files(repo_path: Path) -> list[str]:
     return paths
 
 
+def default_branch(repo_path: Path) -> str:
+    """The remote's default branch name, falling back to ``main``."""
+    completed = run(
+        repo_path, ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"], check=False
+    )
+    ref = completed.stdout.strip()
+    return ref.split("/", 1)[1] if completed.returncode == 0 and "/" in ref else "main"
+
+
+def park_changes(repo_path: Path, label: str, today: date | None = None) -> str | None:
+    """Move uncommitted work onto a local ``aicg/parked/...`` branch.
+
+    Used when generated content can't become a PR (verification failed,
+    quarantined, guardrails, gh error). Without this the work stayed in the
+    working tree, so every later sync skipped the repo as dirty and the
+    content sat unseen for weeks. Returns the branch name, or None if the
+    tree was already clean. Runner state under ``.aicg/`` is never touched.
+    """
+    if not git_changed_files(repo_path):
+        return None
+    stamp = (today or date.today()).isoformat()
+    safe = "".join(c if c.isalnum() or c in "-._" else "-" for c in label)[:80]
+    branch = f"aicg/parked/{stamp}/{safe}"
+    run(repo_path, ["git", "checkout", "-q", "-B", branch])
+    commit_all(repo_path, f"aicg: park unpublished work for {label}")
+    run(repo_path, ["git", "checkout", "-q", default_branch(repo_path)])
+    return branch
+
+
 def is_aicg_state_path(path: str) -> bool:
     return path == ".aicg" or path.startswith(".aicg/")
 

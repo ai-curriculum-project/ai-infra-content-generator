@@ -729,6 +729,7 @@ def _process_one_item(
             item["status"] = "verification_failed"
             item["last_failure"] = verify_outcome.get("last_finding_summary", "")
         item["verified_at"] = utc_now()
+        _park_unpublished_work(repo_path, item, result)
     except GenerationNotConfigured as exc:
         item["status"] = "prompt_ready"
         item["updated_at"] = utc_now()
@@ -2645,6 +2646,30 @@ def _persist_pr_response_state(state_dir: Path, item: dict[str, Any]) -> None:
             break
     payload["items"] = items
     write_json(path, payload)
+
+
+def _park_unpublished_work(repo_path: Path, item: dict[str, Any], result: dict[str, Any]) -> None:
+    """If generated work didn't become a PR, record why and park it on a branch.
+
+    Leaving it in the working tree made later syncs skip the repo as dirty,
+    so the content (and every later update to the repo) went nowhere.
+    """
+    pr = result.get("pr") or {}
+    published = item["status"] == "merged" or pr.get("status") == "opened"
+    if published:
+        return
+    if pr.get("status") in {"error", "skipped"}:
+        item["last_failure"] = f"pr {pr['status']}: {pr.get('reason', '')}"[:500]
+    from .gitops import GitOpsError, park_changes
+
+    try:
+        branch = park_changes(repo_path, item["work_id"])
+    except GitOpsError as exc:
+        result["park_error"] = str(exc)[:500]
+        return
+    if branch:
+        item["parked_branch"] = branch
+        result["parked_branch"] = branch
 
 
 def _open_work_item_pr(
