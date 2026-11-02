@@ -249,8 +249,15 @@ print(next((r['learning_repo'] for r in d['roles'] if r['id']=='$ROLE'),''))" 2>
             log "research-role: $RR_LREPO is on '$RR_BRANCH', not main; not committing research files"
             exit 0
           fi
+          # Runner state must never make the repo look dirty: older repos
+          # don't ignore .aicg/, so add the rule (and commit it) if missing.
+          RR_FILES=(JOB_REQUIREMENTS.md)
+          if [[ -e .aicg ]] && ! grep -qE '^\.aicg/?$' .gitignore 2>/dev/null; then
+            echo ".aicg/" >>.gitignore
+            RR_FILES+=(.gitignore)
+          fi
           shopt -s nullglob
-          RR_FILES=(JOB_REQUIREMENTS.md RESEARCH_PROPOSAL_*.md)
+          RR_FILES+=(RESEARCH_PROPOSAL_*.md)
           RR_EXISTING=()
           for f in "${RR_FILES[@]}"; do [[ -f "$f" ]] && RR_EXISTING+=("$f"); done
           [[ ${#RR_EXISTING[@]} -gt 0 ]] && git add -- "${RR_EXISTING[@]}"
