@@ -167,8 +167,8 @@ install_cron() {
 
   local block
   block="$marker_begin
-0 2 1 * * $(job_command monthly-release)
-0 3 * * 0 $(job_command weekly-audit)
+5 2 1 * * $(job_command monthly-release)
+5 3 * * 0 $(job_command weekly-audit)
 0 * * * * $(job_command daily-remediate)
 20 4 * * * $(job_command daily-issues)
 40 4 * * * $(job_command daily-steward)
@@ -407,7 +407,11 @@ install_systemd() {
     mkdir -p "$unit_dir"
   fi
 
-  write_systemd_pair "$unit_dir" "monthly-release" "monthly-release" "*-*-01 02:00:00"
+  # Every job below that would fire at minute 0 is offset to :05 — daily-remediate
+  # fires at *:00:00 and holds the org-job lock, so a :00 job races it and
+  # usually bails with "Another AICG org job is running" (fleet-digest lost
+  # 5 of 7 days in late Oct 2026; monthly-release and weekly-audit also lost).
+  write_systemd_pair "$unit_dir" "monthly-release" "monthly-release" "*-*-01 02:05:00"
   # Per-role nightly research replaces the org-wide monthly-research job.
   # The legacy aicg-monthly-research.{service,timer} files are still
   # written for compatibility (so existing operators see the rename in
@@ -416,8 +420,8 @@ install_systemd() {
   # per-role instances.
   write_systemd_pair "$unit_dir" "monthly-research" "monthly-research" "*-03,06,09,12-01 05:30:00"
   # Quarterly LLM freshness review (1st of Mar/Jun/Sep/Dec at 06:00).
-  write_systemd_pair "$unit_dir" "monthly-review" "monthly-review" "*-03,06,09,12-01 06:00:00"
-  write_systemd_pair "$unit_dir" "weekly-audit" "weekly-audit" "Sun 03:00:00"
+  write_systemd_pair "$unit_dir" "monthly-review" "monthly-review" "*-03,06,09,12-01 06:05:00"
+  write_systemd_pair "$unit_dir" "weekly-audit" "weekly-audit" "Sun 03:05:00"
   write_systemd_pair "$unit_dir" "daily-remediate" "daily-remediate" "*-*-* *:00:00"
   write_systemd_pair "$unit_dir" "daily-issues" "daily-issues" "*-*-* 04:20:00"
   write_systemd_pair "$unit_dir" "daily-steward" "daily-steward" "*-*-* 04:40:00"
@@ -428,7 +432,7 @@ install_systemd() {
   # runtime (~1-100s).
   write_systemd_pair "$unit_dir" "daily-discussions" "daily-discussions" "*-*-* 05:05:00"
   # Project-wide daily fleet digest -> ntfy (read-only; covers all domains).
-  write_systemd_pair "$unit_dir" "fleet-digest" "fleet-digest" "*-*-* 09:00:00"
+  write_systemd_pair "$unit_dir" "fleet-digest" "fleet-digest" "*-*-* 09:05:00"
 
   install_per_role_research "$unit_dir"
   install_per_role_review "$unit_dir"
