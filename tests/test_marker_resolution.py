@@ -242,3 +242,19 @@ def test_report_is_written_for_the_job(tmp_path: Path) -> None:
 def test_repos_with_markers_ranks_role_repos(tmp_path: Path) -> None:
     workspace, learning, manifest = _setup(tmp_path)
     assert repos_with_markers(manifest, workspace) == [("ai-infra-security-learning", 2)]
+
+
+def test_judge_rejects_huge_additions_on_few_lines() -> None:
+    before = {"a.md": f"Claim. {M}\n"}
+    after = {"a.md": "Claim (source). " + "padding " * 2000 + "\n"}
+    verdict = _judge(before, after, {"a.md"})
+    assert not verdict.accepted and "characters" in verdict.reason
+
+
+def test_judge_allows_a_normal_citation() -> None:
+    before = {"a.md": f"The fee is $175. {M}\n"}
+    after = {
+        "a.md": "The fee is $175 ([Delaware Division of Corporations]"
+        "(https://corp.delaware.gov/frtaxcalc/)).\n"
+    }
+    assert _judge(before, after, {"a.md"}).accepted
