@@ -448,8 +448,10 @@ import json
 d=json.load(open('$MANIFEST'))
 print(next((r['learning_repo'] for r in d['roles'] if r['id']=='$BA_ROLE'),''))" 2>/dev/null || true)
         # Fail closed: commit ONLY when aicg exited 0 and its report lists
-        # exactly one filled module with a safe id. Anything else (rejected,
-        # failed, capped, revert error) commits nothing.
+        # exactly one filled module with a safe id (the agent itself works on an
+        # isolated copy with no .git). Before pushing, verify the new commit is
+        # the only one on head_before and touches only that module's
+        # quizzes/ and labs/.
         if run_aicg_org backfill-assessments --role "$BA_ROLE" --max-modules 1 \
             && [[ -n "$BA_LREPO" && -d "$WORKSPACE/$BA_LREPO/.git" ]]; then
           BA_MOD=$(python3 -c "
@@ -474,6 +476,8 @@ print(h if re.fullmatch(r'[0-9a-f]{40}', h or '') else '')" 2>/dev/null || true)
                   commit -q -m "content: author $BA_MOD quizzes/labs (aicg backfill-assessments)" \
                   && [[ "$(git rev-parse HEAD~1)" == "$BA_HEAD" ]] \
                   && [[ "$(git rev-list --count "$BA_HEAD..HEAD")" == "1" ]] \
+                  && [[ -z "$(git diff --name-only "$BA_HEAD" HEAD \
+                         | grep -vE "^lessons/$BA_MOD/(quizzes|labs)/")" ]] \
                   && git -c core.hooksPath=/dev/null push origin HEAD \
                   && log "pushed assessments for $BA_ROLE: $BA_MOD" \
                   && notify_ntfy "📝 $(basename "$MANIFEST" .yaml) · $BA_ROLE assessments" \

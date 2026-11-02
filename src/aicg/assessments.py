@@ -9,7 +9,7 @@ For each module that is authored (has chapters) but whose ``quizzes/`` or
 ``labs/`` directory still holds only the placeholder README, it asks the
 configured content agent to write the assessments from the module's own
 chapters. The agent may edit only those two directories. Any change outside
-them makes the whole attempt for that module get reverted and reported as
+them discards the whole attempt for that module, which is reported as
 rejected, so a confused or over-eager agent can't rewrite chapters.
 
 Like ``learning_content``, committing and pushing is the caller's job.
@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -36,9 +38,6 @@ _CHAPTER_RE = re.compile(r"^\d\d-.+\.md$")
 # so only plain slugs are accepted.
 _MODULE_ID_RE = re.compile(r"^mod-[a-z0-9][a-z0-9-]*$")
 _STATE_PREFIX = ".aicg/"
-# Paths git doesn't report but that change what git itself does (hooks run on
-# the job's commit). Snapshotted and restored around every agent run.
-_GIT_PROTECTED = (".git/config", ".git/hooks", ".git/HEAD", ".git/packed-refs", ".git/info")
 
 
 class AssessmentError(RuntimeError):
@@ -198,9 +197,14 @@ def build_assessment_prompt(
 
 
 # --- change control ----------------------------------------------------------------
+#
+# The agent never touches the real checkout. It works on a throwaway copy that
+# has no .git directory; afterwards only new or modified files under the
+# module's quizzes/ and labs/ are copied back. Git state (hooks, config, refs,
+# index, alternates) is therefore unreachable, and a stray background process
+# can only scribble on a copy that is about to be deleted.
 
-
-# Runner scratch the harness itself writes during a run.
+# Runner scratch the harness itself writes into the copy.
 _SCRATCH_PREFIXES = (".aicg/prompts/", ".aicg/generated/", f".aicg/{ASSESSMENT_REPORT}")
 
 
@@ -218,16 +222,18 @@ def disallowed_changes(changed: list[str], module_id: str) -> list[str]:
     ]
 
 
-def _user_changes(repo: Path, paths: list[str]) -> list[str]:
-    """Changed paths, excluding untracked runner state under ``.aicg/``."""
-    return [p for p in paths if not (p.startswith(_STATE_PREFIX) and not _in_head(repo, p))]
-
-
 def _git(repo: Path, *args: str) -> str:
     result = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         raise AssessmentError(f"git {' '.join(args)} failed in {repo}: {result.stderr.strip()}")
     return result.stdout
+
+
+def _in_head(repo: Path, path: str) -> bool:
+    result = subprocess.run(
+        ["git", "cat-file", "-e", f"HEAD:{path}"], cwd=repo, capture_output=True, check=False
+    )
+    return result.returncode == 0
 
 
 def changed_paths(repo: Path) -> list[str]:
@@ -246,121 +252,55 @@ def changed_paths(repo: Path) -> list[str]:
     return paths
 
 
-Snapshot = dict[str, bytes | None]
+def _user_changes(repo: Path, paths: list[str]) -> list[str]:
+    """Changed paths, excluding untracked runner state under ``.aicg/``."""
+    return [p for p in paths if not (p.startswith(_STATE_PREFIX) and not _in_head(repo, p))]
 
 
-def _read(repo: Path, path: str) -> bytes | None:
-    target = repo / path
-    return target.read_bytes() if target.is_file() else None
+def head_sha(repo: Path) -> str:
+    return _git(repo, "rev-parse", "HEAD").strip()
 
 
-def _snapshot(repo: Path) -> Snapshot:
-    """Current bytes of every already-changed path (None = deleted/missing)."""
-    return {p: _read(repo, p) for p in _user_changes(repo, changed_paths(repo))}
+def _tree_files(root: Path, skip_git: bool) -> dict[str, bytes]:
+    """Every regular file under ``root`` as {relative posix path: bytes}.
 
-
-def touched_since(repo: Path, before: Snapshot) -> list[str]:
-    """Paths whose content differs from ``before`` (new changes, or re-edits of
-    paths that were already dirty, e.g. an earlier module's fresh quiz)."""
-    candidates = set(_user_changes(repo, changed_paths(repo))) | set(before)
-    touched = []
-    for path in sorted(candidates):
-        if path in before:
-            if _read(repo, path) != before[path]:
-                touched.append(path)
-        else:
-            touched.append(path)
-    return touched
-
-
-def _in_head(repo: Path, path: str) -> bool:
-    result = subprocess.run(
-        ["git", "cat-file", "-e", f"HEAD:{path}"], cwd=repo, capture_output=True, check=False
-    )
-    return result.returncode == 0
-
-
-def _protected_snapshot(repo: Path) -> Snapshot:
-    """Bytes of git-invisible files that alter git's own behavior."""
-    snap: Snapshot = {}
-    for rel in _GIT_PROTECTED:
-        target = repo / rel
-        if target.is_file():
-            snap[rel] = target.read_bytes()
-        elif target.is_dir():
-            for f in sorted(p for p in target.rglob("*") if p.is_file()):
-                snap[str(f.relative_to(repo))] = f.read_bytes()
-    return snap
-
-
-def protected_touched(repo: Path, before: Snapshot) -> list[str]:
-    after = _protected_snapshot(repo)
-    return sorted(p for p in set(before) | set(after) if before.get(p) != after.get(p))
-
-
-def _restore_protected(repo: Path, before: Snapshot) -> None:
-    for rel in protected_touched(repo, before):
-        target = repo / rel
-        if rel in before:
-            target.write_bytes(before[rel])  # type: ignore[arg-type]
-        else:
-            target.unlink(missing_ok=True)
-
-
-def _head_state(repo: Path) -> tuple[str, str | None]:
-    """(HEAD commit sha, symbolic ref such as refs/heads/main or None if detached)."""
-    sha = _git(repo, "rev-parse", "HEAD").strip()
-    ref = subprocess.run(
-        ["git", "symbolic-ref", "-q", "HEAD"], cwd=repo, capture_output=True, text=True, check=False
-    ).stdout.strip()
-    return sha, ref or None
-
-
-def _restore_head(repo: Path, sha: str, ref: str | None) -> bool:
-    """Put the branch back on ``sha`` if the agent moved it. True if it had moved.
-
-    The agent can't run ``git commit``, but it can write ref files directly;
-    without this a smuggled commit would ride along on the job's push.
+    Symlinks are not followed or recorded: the copy is made without them, so a
+    link can't be used to reach outside the copy.
     """
-    if _head_state(repo) == (sha, ref):
-        return False
-    if ref:
-        _git(repo, "update-ref", ref, sha)
-        _git(repo, "symbolic-ref", "HEAD", ref)
-    else:
-        _git(repo, "update-ref", "--no-deref", "HEAD", sha)
-    return True
+    files: dict[str, bytes] = {}
+    for path in root.rglob("*"):
+        rel = path.relative_to(root).as_posix()
+        if skip_git and (rel == ".git" or rel.startswith(".git/")):
+            continue
+        if path.is_file() and not path.is_symlink():
+            files[rel] = path.read_bytes()
+    return files
 
 
-def _revert_fail_closed(
-    repo: Path, touched: list[str], before: Snapshot, git_before: Snapshot
-) -> None:
-    """Undo an attempt. If precise restore fails, fall back to a hard reset
-    (the run requires a clean repo up front) and raise so nothing is committed."""
-    try:
-        _restore_protected(repo, git_before)
-        revert_paths(repo, touched, before)
-    except (OSError, AssessmentError) as exc:
-        _git(repo, "reset", "-q", "--hard", "HEAD")
-        _git(repo, "clean", "-fdq")
-        raise AssessmentError(f"precise revert failed ({exc}); repo hard-reset to HEAD") from exc
+def make_isolated_copy(learning_path: Path, dest: Path) -> None:
+    """Copy the checkout's working tree to ``dest`` without .git or symlinks."""
+
+    def ignore(directory: str, names: list[str]) -> set[str]:
+        base = Path(directory)
+        return {n for n in names if n == ".git" or (base / n).is_symlink()}
+
+    shutil.copytree(learning_path, dest, ignore=ignore, symlinks=False)
 
 
-def revert_paths(repo: Path, paths: list[str], before: Snapshot) -> None:
-    """Restore each path to its state in ``before`` (or HEAD if it was clean)."""
-    for path in paths:
-        target = repo / path
-        if path in before:
-            original = before[path]
-            if original is None:
-                target.unlink(missing_ok=True)
-            else:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(original)
-        elif _in_head(repo, path):
-            _git(repo, "checkout", "-q", "HEAD", "--", path)
-        else:
-            target.unlink(missing_ok=True)
+def diff_copy(original: Path, copy: Path) -> tuple[list[str], list[str]]:
+    """(changed-or-new paths, deleted paths) of ``copy`` relative to ``original``."""
+    before = _tree_files(original, skip_git=True)
+    after = _tree_files(copy, skip_git=False)
+    changed = sorted(p for p, data in after.items() if before.get(p) != data)
+    deleted = sorted(p for p in before if p not in after)
+    return changed, deleted
+
+
+def copy_back(copy: Path, learning_path: Path, paths: list[str]) -> None:
+    for rel in paths:
+        target = learning_path / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((copy / rel).read_bytes())
 
 
 # --- orchestration -------------------------------------------------------------------
@@ -381,49 +321,51 @@ def _load_role(
     return role, learning_path, json.loads(plan_path.read_text(encoding="utf-8"))
 
 
-def _attempt_module(
-    command: str, learning_path: Path, role: RoleConfig, plan: dict, gap: AssessmentGap
-) -> tuple[str, list[str]]:
-    """Run the agent for one module. Returns (outcome, rejected_paths)."""
+def _write_packet(
+    work: Path, role: RoleConfig, plan: dict, gap: AssessmentGap
+) -> tuple[Path, Path]:
+    """Write the prompt into the isolated copy. Returns (prompt_path, output_dir)."""
     module = next(m for m in plan["modules"] if m["id"] == gap.module_id)
-    module_dir = learning_path / "lessons" / gap.module_id
-    sources = [str(p.relative_to(learning_path)) for p in chapter_sources(module_dir)]
+    sources = [str(p.relative_to(work)) for p in chapter_sources(work / "lessons" / gap.module_id)]
     prompt = build_assessment_prompt(
         plan.get("title", role.title), plan.get("level", role.level), module, gap, sources
     )
-    state_root = ensure_state_dir(learning_path)
     work_id = f"assessments-{gap.module_id}"
-    prompt_path = state_root / "prompts" / f"{work_id}.md"
+    prompt_path = work / ".aicg" / "prompts" / f"{work_id}.md"
     prompt_path.parent.mkdir(parents=True, exist_ok=True)
     prompt_path.write_text(prompt, encoding="utf-8")
-    output_dir = state_root / "generated" / work_id
+    output_dir = work / ".aicg" / "generated" / work_id
     output_dir.mkdir(parents=True, exist_ok=True)
-    formatted = command.format(
-        prompt=str(prompt_path),
-        output_dir=str(output_dir),
-        repo=str(learning_path),
-        work_id=work_id,
-        runner=str(_RUNNER_ROOT),
-    )
-    before = _snapshot(learning_path)
-    git_before = _protected_snapshot(learning_path)
-    head_sha, head_ref = _head_state(learning_path)
-    result = run_agent_command(formatted, cwd=learning_path)
-    # Restore git's own state first, so file diffs are measured against the
-    # original HEAD rather than one the agent may have moved.
-    violations = protected_touched(learning_path, git_before)
-    _restore_protected(learning_path, git_before)
-    if _restore_head(learning_path, head_sha, head_ref):
-        violations.append(f"HEAD moved off {head_ref or head_sha}")
-    touched = touched_since(learning_path, before)
-    if result.limit_reached:
-        _revert_fail_closed(learning_path, touched, before, git_before)
-        raise AgentLimitReached(result)
-    rejected = disallowed_changes(touched, gap.module_id) + violations
-    if rejected or result.returncode != 0:
-        _revert_fail_closed(learning_path, touched, before, git_before)
-        return ("rejected" if rejected else "failed"), rejected
-    return ("filled" if touched else "unchanged"), []
+    return prompt_path, output_dir
+
+
+def _attempt_module(
+    command: str, learning_path: Path, role: RoleConfig, plan: dict, gap: AssessmentGap
+) -> tuple[str, list[str]]:
+    """Run the agent for one module on an isolated copy. Returns (outcome, rejected_paths)."""
+    with tempfile.TemporaryDirectory(prefix="aicg-assess-") as tmp:
+        work = Path(tmp) / "repo"
+        make_isolated_copy(learning_path, work)
+        prompt_path, output_dir = _write_packet(work, role, plan, gap)
+        formatted = command.format(
+            prompt=str(prompt_path),
+            output_dir=str(output_dir),
+            repo=str(work),
+            work_id=f"assessments-{gap.module_id}",
+            runner=str(_RUNNER_ROOT),
+        )
+        result = run_agent_command(formatted, cwd=work)
+        if result.limit_reached:
+            raise AgentLimitReached(result)
+        changed, deleted = diff_copy(learning_path, work)
+        rejected = disallowed_changes(changed, gap.module_id) + [f"deleted {p}" for p in deleted]
+        if rejected:
+            return "rejected", rejected
+        if result.returncode != 0:
+            return "failed", []
+        allowed = [p for p in changed if not p.startswith(_SCRATCH_PREFIXES)]
+        copy_back(work, learning_path, allowed)
+        return ("filled" if allowed else "unchanged"), []
 
 
 def _empty_report(role: RoleConfig) -> dict[str, Any]:
@@ -461,7 +403,7 @@ def backfill_role_assessments(
             f"indistinguishable from the agent's edits)."
         )
     report = _empty_report(role)
-    report["head_before"] = _head_state(learning_path)[0]
+    report["head_before"] = head_sha(learning_path)
     for gap in find_assessment_gaps(learning_path, plan)[:max_modules]:
         try:
             outcome, rejected = _attempt_module(command, learning_path, role, plan, gap)
