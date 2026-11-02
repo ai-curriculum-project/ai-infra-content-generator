@@ -38,7 +38,7 @@ _MODULE_ID_RE = re.compile(r"^mod-[a-z0-9][a-z0-9-]*$")
 _STATE_PREFIX = ".aicg/"
 # Paths git doesn't report but that change what git itself does (hooks run on
 # the job's commit). Snapshotted and restored around every agent run.
-_GIT_PROTECTED = (".git/config", ".git/hooks")
+_GIT_PROTECTED = (".git/config", ".git/hooks", ".git/HEAD", ".git/packed-refs", ".git/info")
 
 
 class AssessmentError(RuntimeError):
@@ -307,6 +307,31 @@ def _restore_protected(repo: Path, before: Snapshot) -> None:
             target.unlink(missing_ok=True)
 
 
+def _head_state(repo: Path) -> tuple[str, str | None]:
+    """(HEAD commit sha, symbolic ref such as refs/heads/main or None if detached)."""
+    sha = _git(repo, "rev-parse", "HEAD").strip()
+    ref = subprocess.run(
+        ["git", "symbolic-ref", "-q", "HEAD"], cwd=repo, capture_output=True, text=True, check=False
+    ).stdout.strip()
+    return sha, ref or None
+
+
+def _restore_head(repo: Path, sha: str, ref: str | None) -> bool:
+    """Put the branch back on ``sha`` if the agent moved it. True if it had moved.
+
+    The agent can't run ``git commit``, but it can write ref files directly;
+    without this a smuggled commit would ride along on the job's push.
+    """
+    if _head_state(repo) == (sha, ref):
+        return False
+    if ref:
+        _git(repo, "update-ref", ref, sha)
+        _git(repo, "symbolic-ref", "HEAD", ref)
+    else:
+        _git(repo, "update-ref", "--no-deref", "HEAD", sha)
+    return True
+
+
 def _revert_fail_closed(
     repo: Path, touched: list[str], before: Snapshot, git_before: Snapshot
 ) -> None:
@@ -382,14 +407,19 @@ def _attempt_module(
     )
     before = _snapshot(learning_path)
     git_before = _protected_snapshot(learning_path)
+    head_sha, head_ref = _head_state(learning_path)
     result = run_agent_command(formatted, cwd=learning_path)
+    # Restore git's own state first, so file diffs are measured against the
+    # original HEAD rather than one the agent may have moved.
+    violations = protected_touched(learning_path, git_before)
+    _restore_protected(learning_path, git_before)
+    if _restore_head(learning_path, head_sha, head_ref):
+        violations.append(f"HEAD moved off {head_ref or head_sha}")
     touched = touched_since(learning_path, before)
     if result.limit_reached:
         _revert_fail_closed(learning_path, touched, before, git_before)
         raise AgentLimitReached(result)
-    rejected = disallowed_changes(touched, gap.module_id) + protected_touched(
-        learning_path, git_before
-    )
+    rejected = disallowed_changes(touched, gap.module_id) + violations
     if rejected or result.returncode != 0:
         _revert_fail_closed(learning_path, touched, before, git_before)
         return ("rejected" if rejected else "failed"), rejected
@@ -431,6 +461,7 @@ def backfill_role_assessments(
             f"indistinguishable from the agent's edits)."
         )
     report = _empty_report(role)
+    report["head_before"] = _head_state(learning_path)[0]
     for gap in find_assessment_gaps(learning_path, plan)[:max_modules]:
         try:
             outcome, rejected = _attempt_module(command, learning_path, role, plan, gap)

@@ -457,7 +457,11 @@ import json, re
 r=json.load(open('$WORKSPACE/$BA_LREPO/.aicg/assessment-backfill-report.json'))
 f=r.get('modules_filled') or []
 print(f[0] if len(f)==1 and re.fullmatch(r'mod-[a-z0-9][a-z0-9-]*', f[0]) else '')" 2>/dev/null || true)
-          if [[ -z "$BA_MOD" ]]; then
+          BA_HEAD=$(python3 -c "
+import json, re
+h=json.load(open('$WORKSPACE/$BA_LREPO/.aicg/assessment-backfill-report.json')).get('head_before','')
+print(h if re.fullmatch(r'[0-9a-f]{40}', h or '') else '')" 2>/dev/null || true)
+          if [[ -z "$BA_MOD" || -z "$BA_HEAD" ]]; then
             log "backfill-assessments: nothing authored for $BA_ROLE (capped, rejected, or unchanged)"
           else
             ( cd "$WORKSPACE/$BA_LREPO"
@@ -468,6 +472,8 @@ print(f[0] if len(f)==1 and re.fullmatch(r'mod-[a-z0-9][a-z0-9-]*', f[0]) else '
                 git -c core.hooksPath=/dev/null -c core.fsmonitor=false \
                   -c user.email="aicg@veriswarm.ai" -c user.name="AICG Runner" \
                   commit -q -m "content: author $BA_MOD quizzes/labs (aicg backfill-assessments)" \
+                  && [[ "$(git rev-parse HEAD~1)" == "$BA_HEAD" ]] \
+                  && [[ "$(git rev-list --count "$BA_HEAD..HEAD")" == "1" ]] \
                   && git -c core.hooksPath=/dev/null push origin HEAD \
                   && log "pushed assessments for $BA_ROLE: $BA_MOD" \
                   && notify_ntfy "📝 $(basename "$MANIFEST" .yaml) · $BA_ROLE assessments" \

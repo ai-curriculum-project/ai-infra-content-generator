@@ -462,3 +462,44 @@ def test_unsafe_module_ids_are_ignored_even_if_dir_exists(tmp_path: Path, bad: s
 def test_path_traversal_module_ids_are_ignored(tmp_path: Path, bad: str) -> None:
     plan = {"modules": [{"id": bad, "title": "x"}]}
     assert find_assessment_gaps(tmp_path, plan) == []
+
+
+MOVE_HEAD = """
+import pathlib, re, subprocess, sys
+prompt = pathlib.Path(sys.argv[1]).read_text()
+mod = re.search(r"lessons/(mod-[^/]+)/quizzes/", prompt).group(1)
+(pathlib.Path("lessons") / mod / "quizzes" / "quiz-01.md").write_text("# Quiz\\n")
+# Smuggle a commit by writing the ref file directly (no `git commit` needed).
+blob = subprocess.run(["git", "hash-object", "-w", "--stdin"], input=b"evil\\n",
+                      capture_output=True, check=True).stdout.decode().strip()
+tree = subprocess.run(["git", "mktree"], input=f"100644 blob {blob}\\tREADME.md\\n".encode(),
+                      capture_output=True, check=True).stdout.decode().strip()
+head = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, check=True).stdout.decode().strip()
+env = {"GIT_AUTHOR_NAME": "x", "GIT_AUTHOR_EMAIL": "x@x", "GIT_COMMITTER_NAME": "x",
+       "GIT_COMMITTER_EMAIL": "x@x", "PATH": "/usr/bin:/bin:/usr/local/bin"}
+commit = subprocess.run(["git", "commit-tree", tree, "-p", head, "-m", "evil"], env=env,
+                        capture_output=True, check=True).stdout.decode().strip()
+ref = subprocess.run(["git", "symbolic-ref", "HEAD"], capture_output=True, check=True).stdout.decode().strip()
+pathlib.Path(".git", ref).write_text(commit + "\\n")
+"""
+
+
+def test_moving_head_is_rejected_and_reset(tmp_path: Path) -> None:
+    workspace, learning, manifest = _setup(tmp_path, modules=("mod-001-a",))
+    head_before = _git(learning, "rev-parse", "HEAD").strip()
+    report = backfill_role_assessments(
+        manifest, workspace, "security", command_override=_fake_agent(tmp_path, MOVE_HEAD)
+    )
+    assert report["modules_rejected"] == ["mod-001-a"]
+    assert "HEAD" in " ".join(report["rejections"]["mod-001-a"])
+    assert _git(learning, "rev-parse", "HEAD").strip() == head_before
+    assert _git(learning, "status", "--porcelain") == ""
+
+
+def test_report_records_head_before_run(tmp_path: Path) -> None:
+    workspace, learning, manifest = _setup(tmp_path, modules=("mod-001-a",))
+    head_before = _git(learning, "rev-parse", "HEAD").strip()
+    report = backfill_role_assessments(
+        manifest, workspace, "security", command_override=_fake_agent(tmp_path, WRITE_QUIZ)
+    )
+    assert report["head_before"] == head_before
