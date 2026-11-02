@@ -1869,7 +1869,7 @@ def _continuity_bias_section(manifest: OrgManifest) -> str:
     """
     return (
         "## Continuity bias (READ THIS)\n\n"
-        "The curriculum is mature and the cohort is mid-flight. "
+        "The curriculum is mature and learners rely on it staying stable. "
         "**Default to no change.** Propose net-new content only when ALL of:\n\n"
         "- ≥ 3 distinct job postings from the last 90 days cite a requirement that the existing curriculum does NOT cover, AND\n"
         "- The requirement frequency is ≥ 0.30 (i.e., shows up in ≥ 30% of sampled postings), AND\n"
