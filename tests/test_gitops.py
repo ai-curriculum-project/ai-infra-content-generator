@@ -99,3 +99,36 @@ def test_park_changes_ignores_runner_state_and_returns_from_a_pr_branch(
     assert _git(repo, "branch", "--show-current").strip() == "main"
     assert (repo / ".aicg" / "state.json").exists()  # untouched
     assert "new.md" not in _git(repo, "status", "--porcelain")
+
+
+def test_git_changed_files_returns_exact_paths_with_spaces_and_unicode(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from aicg.gitops import git_changed_files
+
+    for k, v in _ENV.items():
+        monkeypatch.setenv(k, v)
+    repo = _repo(tmp_path)
+    (repo / "my notes.md").write_text("x\n")
+    (repo / "résumé.md").write_text("x\n")
+    (repo / "README.md").write_text("# changed\n")
+    _git(repo, "mv", "README.md", "RENAMED.md")
+
+    changed = set(git_changed_files(repo))
+
+    assert {"my notes.md", "résumé.md", "RENAMED.md"} <= changed
+    assert all(not p.startswith('"') for p in changed)
+
+
+def test_guardrail_catches_marker_in_file_with_space(tmp_path: Path, monkeypatch) -> None:
+    from aicg.gitops import git_changed_files
+    from aicg.guardrails import evaluate_guardrails
+
+    for k, v in _ENV.items():
+        monkeypatch.setenv(k, v)
+    repo = _repo(tmp_path)
+    (repo / "my notes.md").write_text("<!-- needs-research: x -->\n")
+
+    decision = evaluate_guardrails(repo, branch="aicg/x", changed_files=git_changed_files(repo))
+
+    assert any("needs-research" in b for b in decision.blockers)

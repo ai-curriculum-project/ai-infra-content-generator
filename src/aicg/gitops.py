@@ -158,14 +158,22 @@ def create_pr(repo_path: Path, title: str, body_path: Path) -> str:
 
 
 def git_changed_files(repo_path: Path) -> list[str]:
-    completed = run(repo_path, ["git", "status", "--short"], check=False)
+    """Changed paths, exactly as on disk.
+
+    Uses ``--porcelain -z``: NUL-separated and never C-quoted, so paths with
+    spaces or non-ASCII characters come back verbatim (``--short`` quotes
+    them, which made the guardrail marker scan skip those files).
+    """
+    completed = run(repo_path, ["git", "status", "--porcelain", "-z"], check=False)
+    entries = [e for e in completed.stdout.split("\0") if e]
     paths: list[str] = []
-    for line in completed.stdout.splitlines():
-        if not line.strip():
+    skip_next = False
+    for entry in entries:
+        if skip_next:  # rename/copy: the source path follows the destination
+            skip_next = False
             continue
-        path = line[3:].strip()
-        if " -> " in path:
-            path = path.split(" -> ", 1)[1]
+        status, path = entry[:2], entry[3:]
+        skip_next = "R" in status or "C" in status
         if not is_aicg_state_path(path):
             paths.append(path)
     return paths
