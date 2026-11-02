@@ -369,6 +369,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     org_backfill.set_defaults(func=cmd_org_backfill_assessments)
 
+    org_markers = org_subparsers.add_parser(
+        "resolve-markers",
+        help="Resolve needs-research markers (cite, soften, or leave) one module batch at a time",
+    )
+    add_org_args(org_markers)
+    org_markers.add_argument(
+        "--repo", default=None, help="Repo to work on. Defaults to the role repo with the most markers."
+    )
+    org_markers.add_argument("--max-units", type=int, default=1, help="Modules to work on (default 1).")
+    org_markers.add_argument("--batch", type=int, default=25, help="Markers per module per run (default 25).")
+    org_markers.add_argument("--list", action="store_true", help="List repos with markers and exit.")
+    org_markers.set_defaults(func=cmd_org_resolve_markers)
+
     org_bootstrap = org_subparsers.add_parser(
         "bootstrap-role",
         help="Scaffold a new role's learning + solutions repos and research prompt",
@@ -1489,6 +1502,41 @@ def cmd_org_render_profile(args: argparse.Namespace) -> int:
         print(f"Wrote {args.output}")
     else:
         sys.stdout.write(text)
+    return 0
+
+
+def cmd_org_resolve_markers(args: argparse.Namespace) -> int:
+    from .agent_cli import AgentLimitReached
+    from .marker_resolution import MarkerError, repos_with_markers, resolve_repo_markers
+
+    manifest = resolve_manifest(args)
+    workspace = resolve_workspace(args)
+    ranked = repos_with_markers(manifest, workspace)
+    if args.list:
+        for name, count in ranked:
+            print(f"{name}: {count} marker(s)")
+        if not ranked:
+            print("No needs-research markers.")
+        return 0
+    repo = args.repo or next((name for name, _ in ranked), None)
+    if repo is None:
+        print("resolve-markers: no markers; nothing to do")
+        return 0
+    try:
+        report = resolve_repo_markers(
+            manifest, workspace, repo, max_units=args.max_units, batch_size=args.batch
+        )
+    except (MarkerError, AgentLimitReached) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(
+        f"Resolved markers in {repo}: resolved={report['markers_resolved']} "
+        f"units_resolved={report['units_resolved']} rejected={report['units_rejected']} "
+        f"failed={report['units_failed']} unchanged={report['units_unchanged']} "
+        f"deferred={report['deferred_unit']} remaining={report['markers_remaining']}"
+    )
+    for unit, reason in report["rejections"].items():
+        print(f"  ✗ {unit} rejected: {reason}")
     return 0
 
 

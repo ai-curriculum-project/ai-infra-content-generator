@@ -68,6 +68,7 @@ Jobs:
   daily-steward
   daily-discussions
   backfill-assessments  (daily per domain: author quizzes/labs for ONE module still on placeholders)
+  resolve-markers       (daily: resolve a batch of needs-research markers in ONE module)
 
 Options:
   --workspace PATH   Curriculum workspace. Default: parent of runner repo.
@@ -522,6 +523,53 @@ print(h if re.fullmatch(r'[0-9a-f]{40}', h or '') else '')" 2>/dev/null || true)
         else
           log "backfill-assessments failed for $BA_ROLE; nothing committed"
         fi
+      fi
+      ;;
+    resolve-markers)
+      # Daily needs-research resolution: pick the role repo with the most
+      # markers and have the research agent (web-enabled) cite, soften, or
+      # leave one module's batch of markers. The agent works on an isolated
+      # copy; marker_resolution.judge_attempt keeps only small, in-scope edits.
+      run_aicg_org sync
+      RM_REPO=$(run_aicg_org resolve-markers --list 2>/dev/null \
+        | sed -n 's/^\([a-z0-9][a-z0-9-]*\): [0-9][0-9]* marker(s)$/\1/p' | head -1)
+      if [[ -z "$RM_REPO" ]]; then
+        log "resolve-markers: no markers; nothing to do"
+      elif run_aicg_org resolve-markers --repo "$RM_REPO" --max-units 1 \
+          && [[ -d "$WORKSPACE/$RM_REPO/.git" ]]; then
+        # Fail closed: commit only the exact files the report lists, each a
+        # module markdown path, on top of the recorded starting commit.
+        RM_LIST=$(python3 -c "
+import json, re
+r=json.load(open('$WORKSPACE/$RM_REPO/.aicg/marker-resolution-report.json'))
+ok=re.compile(r'(lessons|modules)/mod-[a-z0-9][a-z0-9-]*/[A-Za-z0-9._/-]+\.md')
+files=r.get('files_changed') or []
+head=r.get('head_before') or ''
+if files and all(ok.fullmatch(f) for f in files) and re.fullmatch(r'[0-9a-f]{40}', head):
+    print(head); print(r['markers_resolved']); print('\n'.join(files))" 2>/dev/null || true)
+        RM_HEAD=$(printf '%s\n' "$RM_LIST" | sed -n 1p)
+        RM_N=$(printf '%s\n' "$RM_LIST" | sed -n 2p)
+        if [[ -z "$RM_HEAD" ]]; then
+          log "resolve-markers: nothing accepted for $RM_REPO (rejected, unchanged, or capped)"
+        else
+          ( cd "$WORKSPACE/$RM_REPO"
+            mapfile -t RM_FILES < <(printf '%s\n' "$RM_LIST" | sed -n '3,$p')
+            git add -- "${RM_FILES[@]}"
+            if ! git diff --cached --quiet 2>/dev/null; then
+              RM_OUTSIDE=$(git diff --cached --name-only | grep -vxF -f <(printf '%s\n' "${RM_FILES[@]}") || true)
+              [[ -z "$RM_OUTSIDE" ]] || { log "resolve-markers: unexpected staged paths; aborting"; exit 1; }
+              git -c core.hooksPath=/dev/null -c core.fsmonitor=false \
+                -c user.email="aicg@veriswarm.ai" -c user.name="AICG Runner" \
+                commit -q -m "content: resolve $RM_N needs-research marker(s) (aicg resolve-markers)" \
+                && [[ "$(git rev-parse HEAD~1)" == "$RM_HEAD" ]] \
+                && git -c core.hooksPath=/dev/null push -q origin HEAD \
+                && log "resolve-markers: pushed $RM_N resolved marker(s) in $RM_REPO" \
+                && notify_ntfy "🔎 $(basename "$MANIFEST" .yaml) · $RM_REPO" \
+                     "mag" "default" "Resolved $RM_N needs-research marker(s)"
+            fi ) || log "resolve-markers: commit/push failed for $RM_REPO"
+        fi
+      else
+        log "resolve-markers failed for $RM_REPO; nothing committed"
       fi
       ;;
     daily-pipeline-tick)
