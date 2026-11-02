@@ -50,3 +50,54 @@ def test_git_status_parser_includes_untracked_and_renamed_files():
         "new.md",
         "README.md",
     ]
+
+
+def test_markers_in_unchanged_files_do_not_block_a_pr(tmp_path):
+    """A marker committed long ago elsewhere must not block every future PR."""
+    repo = tmp_path / "repo"
+    write_file(repo / "modules" / "mod-310" / "SOLUTION.md", "<!-- needs-research: old -->\n")
+    write_file(repo / "modules" / "mod-301" / "SOLUTION.md", "# New, clean solution\n")
+
+    decision = evaluate_guardrails(
+        repo,
+        branch="aicg/fill-mod-301",
+        changed_files=["modules/mod-301/SOLUTION.md"],
+    )
+
+    assert decision.allowed, decision.blockers
+
+
+def test_markers_in_changed_files_still_block(tmp_path):
+    repo = tmp_path / "repo"
+    write_file(repo / "modules" / "mod-301" / "SOLUTION.md", "<!-- manual-review: check -->\n")
+
+    decision = evaluate_guardrails(
+        repo, branch="aicg/fill-mod-301", changed_files=["modules/mod-301/SOLUTION.md"]
+    )
+
+    assert not decision.allowed
+    assert any("Manual-review" in b for b in decision.blockers)
+
+
+def test_changed_directories_are_scanned_recursively(tmp_path):
+    # `git status --porcelain` reports a brand-new directory as one entry.
+    repo = tmp_path / "repo"
+    write_file(repo / "modules" / "mod-301" / "exercise-1" / "SOLUTION.md",
+               "<!-- needs-research: cite -->\n")
+
+    decision = evaluate_guardrails(
+        repo, branch="aicg/fill-mod-301", changed_files=["modules/mod-301/"]
+    )
+
+    assert any("needs-research" in b for b in decision.blockers)
+
+
+def test_deleted_changed_files_are_ignored(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    decision = evaluate_guardrails(
+        repo, branch="aicg/x", changed_files=["modules/gone/SOLUTION.md"]
+    )
+
+    assert decision.allowed
