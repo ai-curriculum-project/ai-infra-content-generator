@@ -1,0 +1,46 @@
+{
+  "tagline": "A hands-on, role-based curriculum for engineers who build and train machine-learning models — from your first production model to principal-level ML strategy.",
+  "overview": "This org covers **ML engineering** — *building and training* the models: data pipelines, classical and deep learning, fine-tuning and alignment, evaluation, distributed training, and the senior-to-principal work of setting ML architecture and strategy. Every role track has a paired **learning** repository (modules, lecture chapters, exercises) and a **solutions** repository with reference walkthroughs.",
+  "highlights": [
+    "🧭 Ladder runs from **ML Engineer (L20)** to **Principal ML Engineer (L48)**, with four specialist tracks in between"
+  ],
+  "bands": [
+    {
+      "title": "🟢 Foundation (L20)",
+      "min_level": 0,
+      "max_level": 29
+    },
+    {
+      "title": "🔵 Specialist & Senior (L30–L35)",
+      "min_level": 30,
+      "max_level": 39
+    },
+    {
+      "title": "⭐ Staff & Principal (L40+)",
+      "min_level": 40,
+      "max_level": 99
+    }
+  ],
+  "focus": {
+    "ml-engineer": "ML foundations, data for ML, classical & deep learning, experiment tracking, deployment, drift monitoring",
+    "fine-tuning-engineer": "SFT data, PEFT (LoRA/QLoRA), preference optimization, safety tuning, distributed fine-tuning, quantization",
+    "model-evaluation-engineer": "Benchmarks, LLM eval harnesses, LLM-as-judge, human eval, agent & safety evals, production eval",
+    "nlp-engineer": "Tokenization, classical NLP, classification, extraction, QA, summarization, machine translation",
+    "senior-ml-engineer": "ML systems architecture, production LLM integration, experimentation at scale, ML SLOs, technical leadership",
+    "training-pipeline-engineer": "Distributed training, data pipelines at scale, cluster orchestration, checkpointing, elastic training, throughput",
+    "staff-ml-engineer": "Multi-team ML architecture, foundation-model training programs, ML platform strategy, capacity & TCO",
+    "principal-ml-engineer": "Org & industry ML strategy, north-star ML architecture, influence without authority, the technical bar"
+  },
+  "track_note": "Specialist tracks (fine-tuning, evaluation, NLP, training pipelines) branch from ML Engineer and can be taken in any order.",
+  "quick_start_role": "ml-engineer",
+  "technologies": {
+    "Languages & frameworks": "Python, PyTorch, JAX",
+    "Distributed training": "FSDP, DeepSpeed, Megatron, NCCL, CUDA, Triton",
+    "Fine-tuning & alignment": "SFT, PEFT (LoRA/QLoRA), preference optimization, quantization",
+    "Orchestration": "Ray, Kubernetes, Slurm",
+    "Experiment tracking": "MLflow, Weights & Biases",
+    "Evaluation": "Benchmark harnesses, LLM-as-judge, human evaluation, red-team evals"
+  },
+  "discussions": true,
+  "career_progression": true
+}

@@ -1,0 +1,52 @@
+{
+  "tagline": "A hands-on, role-based curriculum for governing, securing, and assuring AI — from analyst to Chief AI Officer.",
+  "overview": "This org covers **AI governance** — *governing, securing and assuring* AI: inventories and risk assessments, red-teaming and adversarial ML, release assurance and evaluation evidence, ML security, agentic safety, enterprise control architecture, and executive leadership of an AI governance program. Every role track has a paired **learning** repository and a **solutions** repository with reference walkthroughs.",
+  "highlights": [
+    "🏛️ Ladder runs from **AI Governance Analyst (L15)** to **Chief AI Officer (L70)**"
+  ],
+  "bands": [
+    {
+      "title": "🟢 Analyst & Risk (L15–L25)",
+      "min_level": 0,
+      "max_level": 29
+    },
+    {
+      "title": "🔵 Assurance, Security & Safety (L35–L40)",
+      "min_level": 30,
+      "max_level": 49
+    },
+    {
+      "title": "🟣 Architect (L50)",
+      "min_level": 50,
+      "max_level": 59
+    },
+    {
+      "title": "⭐ Executive (L60–L70)",
+      "min_level": 60,
+      "max_level": 99
+    }
+  ],
+  "focus": {
+    "ai-governance-analyst": "AI inventory & intake, risk assessments, fairness review, impact assessments & model cards, regulatory tracking",
+    "ai-risk-engineer": "Risk frameworks, harm modeling, risk registers, LLM red-teaming, adversarial ML, fairness, privacy risk",
+    "ai-evaluation-engineer": "Release assurance, assurance cases, release gates, evaluation evidence pipelines, cross-jurisdiction obligations",
+    "security": "ML security, zero trust, secrets, adversarial ML, runtime security, policy as code, supply chain, SecOps",
+    "agentic-safety-engineer": "Agent threat modeling, prompt injection & jailbreaks, dangerous-capability evals, excessive-agency containment",
+    "senior-ai-governance-architect": "AI control libraries, policy as code, multi-jurisdiction reconciliation, AI management systems, risk appetite",
+    "head-of-ai-governance": "Running the program, board & audit reporting, regulator engagement, regulatory change, program maturity",
+    "chief-ai-officer": "AI regulation & risk, model risk management, responsible AI, AI security, audit evidence, board reporting"
+  },
+  "quick_start_role": "ai-governance-analyst",
+  "technologies_heading": "🛠️ Frameworks & Tools Covered",
+  "technologies": {
+    "Regulation & standards": "EU AI Act, NIST AI RMF, ISO/IEC 42001, SR 11-7",
+    "Threat frameworks": "OWASP (incl. LLM Top 10), MITRE ATLAS",
+    "Policy as code": "Open Policy Agent (OPA), Kyverno",
+    "Supply chain": "Sigstore / Cosign, SLSA",
+    "Infrastructure & secrets": "HashiCorp Vault, Kubernetes, Terraform, GitHub Actions",
+    "Explainability": "SHAP",
+    "Model platforms": "Hugging Face, OpenAI, Anthropic"
+  },
+  "discussions": true,
+  "career_progression": true
+}

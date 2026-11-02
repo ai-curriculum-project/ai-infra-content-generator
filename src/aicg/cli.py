@@ -423,6 +423,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     org_bootstrap_domain.set_defaults(func=cmd_org_bootstrap_domain)
 
+    org_render_profile = org_subparsers.add_parser(
+        "render-profile",
+        help="Render the org-profile README from config/profiles/<domain>.json (rich layout)",
+    )
+    add_org_args(org_render_profile)
+    org_render_profile.add_argument(
+        "--output",
+        default=None,
+        help="Write to this path (e.g. <.github repo>/profile/README.md). Defaults to stdout.",
+    )
+    org_render_profile.set_defaults(func=cmd_org_render_profile)
+
     org_bootstrap_prompt = org_subparsers.add_parser(
         "bootstrap-prompt",
         help="(Re)write a role's research+plan prompt packet (no scaffold) for seeding",
@@ -1455,6 +1467,28 @@ def cmd_org_backfill_assessments(args: argparse.Namespace) -> int:
     )
     for mod, paths in report["rejections"].items():
         print(f"  ✗ {mod} rejected: edited outside quizzes/labs: {', '.join(paths[:5])}")
+    return 0
+
+
+def cmd_org_render_profile(args: argparse.Namespace) -> int:
+    from .domains import DEFAULT_DOMAIN, _runner_root
+    from .org_profile import ProfileError, load_profile, render_rich_profile
+
+    domain = getattr(args, "domain", None) or DEFAULT_DOMAIN
+    path = _runner_root() / "config" / "profiles" / f"{domain}.json"
+    if not path.exists():
+        print(f"error: no profile for domain {domain!r} at {path}", file=sys.stderr)
+        return 2
+    try:
+        text = render_rich_profile(resolve_manifest(args), load_profile(path))
+    except ProfileError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if args.output:
+        Path(args.output).write_text(text, encoding="utf-8")
+        print(f"Wrote {args.output}")
+    else:
+        sys.stdout.write(text)
     return 0
 
 
