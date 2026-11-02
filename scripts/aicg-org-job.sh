@@ -67,6 +67,7 @@ Jobs:
   daily-issues
   daily-steward
   daily-discussions
+  backfill-assessments  (daily per domain: author quizzes/labs for ONE module still on placeholders)
 
 Options:
   --workspace PATH   Curriculum workspace. Default: parent of runner repo.
@@ -427,6 +428,41 @@ for r in sorted(d['roles'], key=lambda x: x.get('level',0)):
         # expected — suppress the per-attempt ⏸️ push (✅ on success still fires).
         AICG_LOCK_HELD=1 AICG_FILL_QUIET=1 bash "$0" generate-role "$FILL_PICK" \
           --workspace "$WORKSPACE" --manifest "$MANIFEST" --state-dir "$STATE_DIR"
+      fi
+      ;;
+    backfill-assessments)
+      # Daily quiz/lab backfill: pick the lowest-level role in this domain with
+      # an authored module whose quizzes/ or labs/ are still bootstrap
+      # placeholders, and author ONE module's assessments from its chapters.
+      # The agent may only touch that module's quizzes/ and labs/; anything else
+      # is reverted inside aicg (see assessments.py). Only those dirs are staged.
+      run_aicg_org sync
+      BA_ROLE=$(run_aicg_org backfill-assessments --list 2>/dev/null \
+        | sed -n 's/^\([a-z0-9-][a-z0-9-]*\): [0-9][0-9]* module(s)$/\1/p' | head -1)
+      if [[ -z "$BA_ROLE" ]]; then
+        log "backfill-assessments: no assessment gaps; nothing to do"
+      else
+        log "backfill-assessments: role -> $BA_ROLE"
+        run_aicg_org backfill-assessments --role "$BA_ROLE" --max-modules 1 \
+          || log "backfill-assessments failed for $BA_ROLE"
+        BA_LREPO=$(python3 -c "
+import json
+d=json.load(open('$MANIFEST'))
+print(next((r['learning_repo'] for r in d['roles'] if r['id']=='$BA_ROLE'),''))" 2>/dev/null || true)
+        if [[ -n "$BA_LREPO" && -d "$WORKSPACE/$BA_LREPO/.git" ]]; then
+          ( cd "$WORKSPACE/$BA_LREPO"
+            git add -- ':(glob)lessons/*/quizzes/**' ':(glob)lessons/*/labs/**' 2>/dev/null || true
+            if ! git diff --cached --quiet 2>/dev/null; then
+              BA_MODS=$(git diff --cached --name-only | cut -d/ -f2 | sort -u | paste -sd, -)
+              git -c user.email="aicg@veriswarm.ai" -c user.name="AICG Runner" \
+                commit -q -m "content: author $BA_MODS quizzes/labs (aicg backfill-assessments)" \
+                && git push origin HEAD && log "pushed assessments for $BA_ROLE: $BA_MODS" \
+                && notify_ntfy "📝 $(basename "$MANIFEST" .yaml) · $BA_ROLE assessments" \
+                     "memo" "default" "Quizzes/labs authored for $BA_MODS"
+            else
+              log "backfill-assessments: nothing authored for $BA_ROLE (capped, rejected, or unchanged)"
+            fi ) || log "assessment commit/push failed for $BA_ROLE"
+        fi
       fi
       ;;
     daily-pipeline-tick)

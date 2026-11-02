@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from .agent_cli import AgentLimitReached, run_agent_command
+from .assessments import module_is_authored
 from .org_config import OrgManifest
 from .org_runner import content_generation_command
 from .state import ensure_state_dir, utc_now, write_json
@@ -102,8 +103,15 @@ def generate_role_learning_content(
     module: str | None = None,
     command_override: str | None = None,
     state_dir: Path | None = None,
+    overwrite: bool = False,
 ) -> dict[str, Any]:
-    """Generate learning content for one role's modules from its plan."""
+    """Generate learning content for one role's modules from its plan.
+
+    Modules that already have lecture content are skipped unless
+    ``overwrite`` is set. The per-role ``generate-role`` timer re-runs this
+    monthly over the whole plan; without the guard it would ask the agent to
+    re-author hand-written or reviewed modules.
+    """
     role = next((item for item in manifest.roles if item.id == role_id), None)
     if role is None:
         raise LearningContentError(
@@ -141,9 +149,13 @@ def generate_role_learning_content(
 
     generated: list[str] = []
     failed: list[str] = []
+    skipped: list[str] = []
     deferred: str | None = None
 
     for mod in modules:
+        if not overwrite and module_is_authored(learning_path / "lessons" / mod["id"]):
+            skipped.append(mod["id"])
+            continue
         prompt = build_module_content_prompt(
             role_id=role_id,
             role_title=plan.get("title", role.title),
@@ -185,6 +197,7 @@ def generate_role_learning_content(
         "learning_repo": role.learning_repo,
         "modules_generated": generated,
         "modules_failed": failed,
+        "modules_skipped": skipped,
         "deferred_module": deferred,
     }
     write_json(state_root / LEARNING_CONTENT_REPORT, report)
