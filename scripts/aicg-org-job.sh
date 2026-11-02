@@ -443,25 +443,39 @@ for r in sorted(d['roles'], key=lambda x: x.get('level',0)):
         log "backfill-assessments: no assessment gaps; nothing to do"
       else
         log "backfill-assessments: role -> $BA_ROLE"
-        run_aicg_org backfill-assessments --role "$BA_ROLE" --max-modules 1 \
-          || log "backfill-assessments failed for $BA_ROLE"
         BA_LREPO=$(python3 -c "
 import json
 d=json.load(open('$MANIFEST'))
 print(next((r['learning_repo'] for r in d['roles'] if r['id']=='$BA_ROLE'),''))" 2>/dev/null || true)
-        if [[ -n "$BA_LREPO" && -d "$WORKSPACE/$BA_LREPO/.git" ]]; then
-          ( cd "$WORKSPACE/$BA_LREPO"
-            git add -- ':(glob)lessons/*/quizzes/**' ':(glob)lessons/*/labs/**' 2>/dev/null || true
-            if ! git diff --cached --quiet 2>/dev/null; then
-              BA_MODS=$(git diff --cached --name-only | cut -d/ -f2 | sort -u | paste -sd, -)
-              git -c user.email="aicg@veriswarm.ai" -c user.name="AICG Runner" \
-                commit -q -m "content: author $BA_MODS quizzes/labs (aicg backfill-assessments)" \
-                && git push origin HEAD && log "pushed assessments for $BA_ROLE: $BA_MODS" \
-                && notify_ntfy "📝 $(basename "$MANIFEST" .yaml) · $BA_ROLE assessments" \
-                     "memo" "default" "Quizzes/labs authored for $BA_MODS"
-            else
-              log "backfill-assessments: nothing authored for $BA_ROLE (capped, rejected, or unchanged)"
-            fi ) || log "assessment commit/push failed for $BA_ROLE"
+        # Fail closed: commit ONLY when aicg exited 0 and its report lists
+        # exactly one filled module with a safe id. Anything else (rejected,
+        # failed, capped, revert error) commits nothing.
+        if run_aicg_org backfill-assessments --role "$BA_ROLE" --max-modules 1 \
+            && [[ -n "$BA_LREPO" && -d "$WORKSPACE/$BA_LREPO/.git" ]]; then
+          BA_MOD=$(python3 -c "
+import json, re
+r=json.load(open('$WORKSPACE/$BA_LREPO/.aicg/assessment-backfill-report.json'))
+f=r.get('modules_filled') or []
+print(f[0] if len(f)==1 and re.fullmatch(r'mod-[a-z0-9][a-z0-9-]*', f[0]) else '')" 2>/dev/null || true)
+          if [[ -z "$BA_MOD" ]]; then
+            log "backfill-assessments: nothing authored for $BA_ROLE (capped, rejected, or unchanged)"
+          else
+            ( cd "$WORKSPACE/$BA_LREPO"
+              git add -- "lessons/$BA_MOD/quizzes" "lessons/$BA_MOD/labs" 2>/dev/null || true
+              if ! git diff --cached --quiet 2>/dev/null; then
+                # Hooks off: the agent ran in this checkout, so never execute
+                # anything it might have left in .git/hooks.
+                git -c core.hooksPath=/dev/null -c core.fsmonitor=false \
+                  -c user.email="aicg@veriswarm.ai" -c user.name="AICG Runner" \
+                  commit -q -m "content: author $BA_MOD quizzes/labs (aicg backfill-assessments)" \
+                  && git -c core.hooksPath=/dev/null push origin HEAD \
+                  && log "pushed assessments for $BA_ROLE: $BA_MOD" \
+                  && notify_ntfy "📝 $(basename "$MANIFEST" .yaml) · $BA_ROLE assessments" \
+                       "memo" "default" "Quizzes/labs authored for $BA_MOD"
+              fi ) || log "assessment commit/push failed for $BA_ROLE"
+          fi
+        else
+          log "backfill-assessments failed for $BA_ROLE; nothing committed"
         fi
       fi
       ;;

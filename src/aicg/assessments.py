@@ -32,7 +32,13 @@ from .state import ensure_state_dir, utc_now, write_json
 ASSESSMENT_REPORT = "assessment-backfill-report.json"
 _RUNNER_ROOT = Path(__file__).resolve().parents[2]
 _CHAPTER_RE = re.compile(r"^\d\d-.+\.md$")
+# Module ids come from a repo file and flow into paths and the agent command,
+# so only plain slugs are accepted.
+_MODULE_ID_RE = re.compile(r"^mod-[a-z0-9][a-z0-9-]*$")
 _STATE_PREFIX = ".aicg/"
+# Paths git doesn't report but that change what git itself does (hooks run on
+# the job's commit). Snapshotted and restored around every agent run.
+_GIT_PROTECTED = (".git/config", ".git/hooks")
 
 
 class AssessmentError(RuntimeError):
@@ -114,6 +120,8 @@ def find_assessment_gaps(learning_path: Path, plan: dict[str, Any]) -> list[Asse
     """
     gaps: list[AssessmentGap] = []
     for module in plan.get("modules", []) or []:
+        if not _MODULE_ID_RE.match(str(module.get("id", ""))):
+            continue
         module_dir = learning_path / "lessons" / module["id"]
         if not module_is_authored(module_dir):
             continue
@@ -192,19 +200,27 @@ def build_assessment_prompt(
 # --- change control ----------------------------------------------------------------
 
 
+# Runner scratch the harness itself writes during a run.
+_SCRATCH_PREFIXES = (".aicg/prompts/", ".aicg/generated/", f".aicg/{ASSESSMENT_REPORT}")
+
+
 def disallowed_changes(changed: list[str], module_id: str) -> list[str]:
-    """Paths outside the module's ``quizzes/`` and ``labs/`` (runner state excluded)."""
+    """Paths outside the module's ``quizzes/`` and ``labs/`` (runner scratch excluded).
+
+    Tracked files under ``.aicg/`` (such as ``curriculum-plan.json``) are NOT
+    exempt: only the scratch the harness writes itself.
+    """
     allowed = (f"lessons/{module_id}/quizzes/", f"lessons/{module_id}/labs/")
     return [
         path
         for path in changed
-        if not path.startswith(_STATE_PREFIX) and not path.startswith(allowed)
+        if not path.startswith(_SCRATCH_PREFIXES) and not path.startswith(allowed)
     ]
 
 
-def _user_changes(paths: list[str]) -> list[str]:
-    """Changed paths excluding runner scratch state under ``.aicg/``."""
-    return [p for p in paths if not p.startswith(_STATE_PREFIX)]
+def _user_changes(repo: Path, paths: list[str]) -> list[str]:
+    """Changed paths, excluding untracked runner state under ``.aicg/``."""
+    return [p for p in paths if not (p.startswith(_STATE_PREFIX) and not _in_head(repo, p))]
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -240,13 +256,13 @@ def _read(repo: Path, path: str) -> bytes | None:
 
 def _snapshot(repo: Path) -> Snapshot:
     """Current bytes of every already-changed path (None = deleted/missing)."""
-    return {p: _read(repo, p) for p in _user_changes(changed_paths(repo))}
+    return {p: _read(repo, p) for p in _user_changes(repo, changed_paths(repo))}
 
 
 def touched_since(repo: Path, before: Snapshot) -> list[str]:
     """Paths whose content differs from ``before`` (new changes, or re-edits of
     paths that were already dirty, e.g. an earlier module's fresh quiz)."""
-    candidates = set(_user_changes(changed_paths(repo))) | set(before)
+    candidates = set(_user_changes(repo, changed_paths(repo))) | set(before)
     touched = []
     for path in sorted(candidates):
         if path in before:
@@ -262,6 +278,47 @@ def _in_head(repo: Path, path: str) -> bool:
         ["git", "cat-file", "-e", f"HEAD:{path}"], cwd=repo, capture_output=True, check=False
     )
     return result.returncode == 0
+
+
+def _protected_snapshot(repo: Path) -> Snapshot:
+    """Bytes of git-invisible files that alter git's own behavior."""
+    snap: Snapshot = {}
+    for rel in _GIT_PROTECTED:
+        target = repo / rel
+        if target.is_file():
+            snap[rel] = target.read_bytes()
+        elif target.is_dir():
+            for f in sorted(p for p in target.rglob("*") if p.is_file()):
+                snap[str(f.relative_to(repo))] = f.read_bytes()
+    return snap
+
+
+def protected_touched(repo: Path, before: Snapshot) -> list[str]:
+    after = _protected_snapshot(repo)
+    return sorted(p for p in set(before) | set(after) if before.get(p) != after.get(p))
+
+
+def _restore_protected(repo: Path, before: Snapshot) -> None:
+    for rel in protected_touched(repo, before):
+        target = repo / rel
+        if rel in before:
+            target.write_bytes(before[rel])  # type: ignore[arg-type]
+        else:
+            target.unlink(missing_ok=True)
+
+
+def _revert_fail_closed(
+    repo: Path, touched: list[str], before: Snapshot, git_before: Snapshot
+) -> None:
+    """Undo an attempt. If precise restore fails, fall back to a hard reset
+    (the run requires a clean repo up front) and raise so nothing is committed."""
+    try:
+        _restore_protected(repo, git_before)
+        revert_paths(repo, touched, before)
+    except (OSError, AssessmentError) as exc:
+        _git(repo, "reset", "-q", "--hard", "HEAD")
+        _git(repo, "clean", "-fdq")
+        raise AssessmentError(f"precise revert failed ({exc}); repo hard-reset to HEAD") from exc
 
 
 def revert_paths(repo: Path, paths: list[str], before: Snapshot) -> None:
@@ -324,14 +381,17 @@ def _attempt_module(
         runner=str(_RUNNER_ROOT),
     )
     before = _snapshot(learning_path)
+    git_before = _protected_snapshot(learning_path)
     result = run_agent_command(formatted, cwd=learning_path)
     touched = touched_since(learning_path, before)
     if result.limit_reached:
-        revert_paths(learning_path, touched, before)
+        _revert_fail_closed(learning_path, touched, before, git_before)
         raise AgentLimitReached(result)
-    rejected = disallowed_changes(touched, gap.module_id)
+    rejected = disallowed_changes(touched, gap.module_id) + protected_touched(
+        learning_path, git_before
+    )
     if rejected or result.returncode != 0:
-        revert_paths(learning_path, touched, before)
+        _revert_fail_closed(learning_path, touched, before, git_before)
         return ("rejected" if rejected else "failed"), rejected
     return ("filled" if touched else "unchanged"), []
 
@@ -365,7 +425,7 @@ def backfill_role_assessments(
     command = command_override or content_generation_command(manifest)
     if not command:
         raise AssessmentError("No content-generation command configured in the org manifest.")
-    if _user_changes(changed_paths(learning_path)):
+    if _user_changes(learning_path, changed_paths(learning_path)):
         raise AssessmentError(
             f"{learning_path} has uncommitted changes; refusing to run (they would be "
             f"indistinguishable from the agent's edits)."

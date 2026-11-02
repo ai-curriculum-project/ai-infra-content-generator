@@ -398,3 +398,67 @@ def test_roles_with_gaps_is_empty_when_all_filled(tmp_path: Path) -> None:
 
     workspace, learning, manifest = _setup(tmp_path, modules=())
     assert roles_with_gaps(manifest, workspace) == []
+
+
+# --- security hardening ----------------------------------------------------------
+
+WRITE_HOOK = """
+import os, pathlib, re, sys
+prompt = pathlib.Path(sys.argv[1]).read_text()
+mod = re.search(r"lessons/(mod-[^/]+)/quizzes/", prompt).group(1)
+(pathlib.Path("lessons") / mod / "quizzes" / "quiz-01.md").write_text("# Quiz\\\\n")
+hook = pathlib.Path(".git/hooks/pre-commit")
+hook.write_text("#!/bin/sh\\\\necho pwned\\\\n")
+os.chmod(hook, 0o755)
+"""
+
+EDIT_TRACKED_PLAN = """
+import pathlib, re, sys
+prompt = pathlib.Path(sys.argv[1]).read_text()
+mod = re.search(r"lessons/(mod-[^/]+)/quizzes/", prompt).group(1)
+(pathlib.Path("lessons") / mod / "quizzes" / "quiz-01.md").write_text("# Quiz\\\\n")
+pathlib.Path(".aicg/curriculum-plan.json").write_text("{}")
+"""
+
+
+def test_writing_git_hooks_is_rejected_and_undone(tmp_path: Path) -> None:
+    workspace, learning, manifest = _setup(tmp_path, modules=("mod-001-a",))
+    report = backfill_role_assessments(
+        manifest, workspace, "security", command_override=_fake_agent(tmp_path, WRITE_HOOK)
+    )
+    assert report["modules_rejected"] == ["mod-001-a"]
+    assert ".git/hooks/pre-commit" in report["rejections"]["mod-001-a"]
+    assert not (learning / ".git/hooks/pre-commit").exists()
+    assert not (learning / "lessons/mod-001-a/quizzes/quiz-01.md").exists()
+
+
+def test_editing_tracked_runner_state_is_rejected(tmp_path: Path) -> None:
+    workspace, learning, manifest = _setup(tmp_path, modules=("mod-001-a",))
+    _git(learning, "add", "-f", ".aicg/curriculum-plan.json")
+    _git(learning, "commit", "-q", "-m", "track plan")
+    report = backfill_role_assessments(
+        manifest,
+        workspace,
+        "security",
+        command_override=_fake_agent(tmp_path, EDIT_TRACKED_PLAN),
+    )
+    assert report["modules_rejected"] == ["mod-001-a"]
+    assert json.loads((learning / ".aicg/curriculum-plan.json").read_text())["modules"]
+
+
+def test_untracked_runner_scratch_is_not_a_violation() -> None:
+    # Prompt files land in .aicg/ (untracked); they must not count as edits.
+    assert disallowed_changes([".aicg/prompts/x.md"], "mod-1") == []
+
+
+@pytest.mark.parametrize("bad", ["mod-1 --evil", "MOD-1", "mod-1;rm", "mod-1$(id)"])
+def test_unsafe_module_ids_are_ignored_even_if_dir_exists(tmp_path: Path, bad: str) -> None:
+    _authored(tmp_path, bad)  # a real, authored directory with that name
+    plan = {"modules": [{"id": bad, "title": "x"}]}
+    assert find_assessment_gaps(tmp_path, plan) == []
+
+
+@pytest.mark.parametrize("bad", ["../escape", "mod-1/../../x"])
+def test_path_traversal_module_ids_are_ignored(tmp_path: Path, bad: str) -> None:
+    plan = {"modules": [{"id": bad, "title": "x"}]}
+    assert find_assessment_gaps(tmp_path, plan) == []
