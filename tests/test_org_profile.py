@@ -216,3 +216,23 @@ def test_shipped_profiles_render_for_every_domain() -> None:
         manifest = load_manifest(domain_config_path(path.stem))
         text = render_rich_profile(manifest, load_profile(path))
         assert "## 📚" in text and "(you are here)" in text
+
+
+def test_bands_can_list_roles_explicitly(tmp_path: Path) -> None:
+    profile = _profile(
+        bands=[
+            {"title": "Track A", "roles": ["ft", "mle"]},
+            {"title": "Track B", "roles": ["staff"]},
+        ]
+    )
+    text = render_rich_profile(_manifest(tmp_path), profile)
+    a, b = text.index("### Track A"), text.index("### Track B")
+    assert a < text.index("**ML Engineer**") < b
+    assert a < text.index("**Fine-Tuning Engineer**") < b
+    assert b < text.index("**Staff ML Engineer**")
+
+
+def test_role_missing_from_explicit_bands_is_an_error(tmp_path: Path) -> None:
+    profile = _profile(bands=[{"title": "Only some", "roles": ["mle", "ft"]}])
+    with pytest.raises(ProfileError, match="staff"):
+        render_rich_profile(_manifest(tmp_path), profile)

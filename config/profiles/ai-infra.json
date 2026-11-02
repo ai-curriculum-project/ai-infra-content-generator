@@ -1,0 +1,73 @@
+{
+  "tagline": "A comprehensive, hands-on learning path for AI Infrastructure Engineers — from entry level to principal.",
+  "overview": "This org covers **AI infrastructure** — *running* the platforms: foundational Python and Kubernetes through distributed training, GPU and LLM infrastructure, MLOps, platform engineering, performance, and enterprise architecture. Every role track has a paired **learning** repository (modules, lecture chapters, exercises, quizzes) and a **solutions** repository with reference walkthroughs.",
+  "highlights": [
+    "🎓 Hundreds of hands-on exercises and dozens of real-world projects",
+    "🔗 **Agentic engineering, governance, and ML engineering** tracks live in the [sibling orgs](#-curriculum-family)"
+  ],
+  "bands": [
+    {
+      "title": "🟢 Entry Level (0-2 years)",
+      "roles": [
+        "junior-engineer",
+        "engineer"
+      ]
+    },
+    {
+      "title": "🔵 Intermediate Level (2-4 years)",
+      "roles": [
+        "mlops",
+        "ml-platform",
+        "performance"
+      ]
+    },
+    {
+      "title": "🟣 Advanced Level (4-6 years)",
+      "roles": [
+        "senior-engineer",
+        "architect"
+      ]
+    },
+    {
+      "title": "🔴 Leadership Level (6-10 years)",
+      "roles": [
+        "team-lead",
+        "senior-architect"
+      ]
+    },
+    {
+      "title": "⭐ Principal Level (8-15+ years)",
+      "roles": [
+        "principal-engineer",
+        "principal-architect"
+      ]
+    }
+  ],
+  "focus": {
+    "junior-engineer": "Python & ML basics, Linux & Docker, Kubernetes intro, cloud platforms, monitoring",
+    "engineer": "Production ML, distributed training, GPU computing, advanced Kubernetes, MLOps, LLM infra, IaC",
+    "mlops": "CI/CD for ML, model registry, feature stores, experiment tracking, drift detection, A/B testing",
+    "ml-platform": "Platform architecture, multi-tenancy, serving at scale, platform APIs/SDKs, developer experience",
+    "performance": "GPU utilization, inference latency, training efficiency, cost optimization, profiling",
+    "senior-engineer": "Advanced Kubernetes (operators/CRDs), distributed training at scale, CUDA, multi-cloud, SRE",
+    "architect": "Enterprise ML architecture, multi-cloud/hybrid, security & compliance, FinOps, HA/DR, LLM/RAG platforms",
+    "team-lead": "Technical strategy & roadmaps, team building, ADRs, incident & performance management",
+    "senior-architect": "Cross-org architecture alignment, enterprise standards, multi-year roadmaps, executive communication",
+    "principal-engineer": "Deep technical expertise, extreme-scale distributed systems, novel infra solutions, mentorship",
+    "principal-architect": "Company-wide strategy, multi-year roadmaps, technology selection, architecture governance"
+  },
+  "track_note": "All 11 infrastructure tracks are actively maintained. Work focuses on depth, runtime validation, and human review. See the [Career Progression Guide](https://github.com/ai-infra-curriculum/.github/blob/main/CAREER_PROGRESSION.md) for role and skill mapping, and the [Curriculum Cross-Reference](https://github.com/ai-infra-curriculum/.github/blob/main/CURRICULUM_CROSS_REFERENCE.md) for how modules connect.",
+  "quick_start_role": "junior-engineer",
+  "technologies": {
+    "Languages": "Python, Bash, HCL (Terraform), YAML",
+    "ML frameworks": "PyTorch, TensorFlow, scikit-learn",
+    "Orchestration": "Kubernetes, Helm, ArgoCD, FluxCD",
+    "Cloud & containers": "AWS, GCP, Azure, Docker, containerd",
+    "MLOps": "MLflow, Kubeflow, DVC, Feast",
+    "Observability": "Prometheus, Grafana, Loki, Jaeger",
+    "IaC & CI/CD": "Terraform, Pulumi, GitHub Actions, GitLab CI",
+    "LLMs & GPU": "vLLM, Llama, Mistral, RAG, CUDA, NCCL, TensorRT"
+  },
+  "discussions": true,
+  "career_progression": true
+}

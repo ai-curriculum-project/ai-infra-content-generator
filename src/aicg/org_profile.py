@@ -84,6 +84,13 @@ def _repo_counts(manifest: Any) -> tuple[int, int, int]:
     return learning + solutions, learning, solutions
 
 
+def _in_band(band: dict[str, Any], role: Any) -> bool:
+    """A band either lists role ids explicitly or covers a level range."""
+    if "roles" in band:
+        return role.id in band["roles"]
+    return band["min_level"] <= role.level <= band["max_level"]
+
+
 def _validate(manifest: Any, profile: dict[str, Any]) -> None:
     ids = {r.id for r in manifest.roles}
     missing = sorted(ids - set(profile["focus"]))
@@ -93,7 +100,7 @@ def _validate(manifest: Any, profile: dict[str, Any]) -> None:
         raise ProfileError(f"quick_start_role {profile['quick_start_role']!r} is not a role")
     for role in manifest.roles:
         bands = profile.get("bands")
-        if bands and not any(b["min_level"] <= role.level <= b["max_level"] for b in bands):
+        if bands and not any(_in_band(b, role) for b in bands):
             raise ProfileError(f"role {role.id!r} (L{role.level}) is outside every band")
 
 
@@ -101,7 +108,7 @@ def _validate(manifest: Any, profile: dict[str, Any]) -> None:
 
 
 def _header(manifest: Any, profile: dict[str, Any]) -> list[str]:
-    org, display = manifest.org, _org_display(manifest.org)
+    org, display = manifest.org.lower(), _org_display(manifest.org)
     total, _, _ = _repo_counts(manifest)
     contrib_url = (
         f"https://github.com/orgs/{org}/discussions"
@@ -150,7 +157,7 @@ def _family(manifest: Any) -> list[str]:
         "organized by what you *do* relative to a model:\n",
     ]
     for sib_org, sib_display, sib_desc in ECOSYSTEM:
-        if sib_org == manifest.org:
+        if sib_org.lower() == manifest.org.lower():  # GitHub org names are case-insensitive
             out.append(f"- **{sib_display} Curriculum** *(you are here)* — {sib_desc}.")
         else:
             out.append(
@@ -166,14 +173,14 @@ def _track_table(org: str, roles: list[Any], focus: dict[str, str], label: str) 
 
 
 def _tracks(manifest: Any, profile: dict[str, Any]) -> list[str]:
-    org, roles = manifest.org, _roles(manifest)
+    org, roles = manifest.org.lower(), _roles(manifest)
     label = profile.get("role_column", "Role")
     out = [f"## {profile.get('tracks_heading', '📚 Learning Tracks')}\n"]
     bands = profile.get("bands")
     if not bands:
         out += _track_table(org, roles, profile["focus"], label)
     for band in bands or []:
-        members = [r for r in roles if band["min_level"] <= r.level <= band["max_level"]]
+        members = [r for r in roles if _in_band(band, r)]
         if members:
             out += [f"### {band['title']}\n", *_track_table(org, members, profile["focus"], label)]
     if profile.get("track_note"):
@@ -213,7 +220,7 @@ def _technologies(profile: dict[str, Any]) -> list[str]:
 
 
 def _closing(manifest: Any, profile: dict[str, Any]) -> list[str]:
-    org = manifest.org
+    org = manifest.org.lower()
     discussions = f"https://github.com/orgs/{org}/discussions"
     career = f"https://github.com/{org}/.github/blob/main/CAREER_PROGRESSION.md"
     out: list[str] = []
