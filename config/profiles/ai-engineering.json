@@ -1,0 +1,47 @@
+{
+  "tagline": "A hands-on, role-based curriculum for engineers who build with AI — LLM apps, RAG, agents, and multi-agent systems, from first app to systems architect.",
+  "overview": "This org covers **AI engineering** — *building with* the models: LLM application development, retrieval and RAG, agents and multi-agent systems, evaluation, guardrails, harness engineering, and production operations. Every role track has a paired **learning** repository (modules, lecture chapters, exercises, quizzes) and a **solutions** repository with reference walkthroughs.",
+  "highlights": [
+    "🤖 **Agentic track** of four rungs: Agentic AI Developer → Engineer → Senior → Systems Architect"
+  ],
+  "bands": [
+    {
+      "title": "🟢 Builder (L20)",
+      "min_level": 0,
+      "max_level": 29
+    },
+    {
+      "title": "🔵 Engineer (L30)",
+      "min_level": 30,
+      "max_level": 39
+    },
+    {
+      "title": "⭐ Senior & Architect (L40+)",
+      "min_level": 40,
+      "max_level": 99
+    }
+  ],
+  "focus": {
+    "agentic-ai-developer": "LLM fundamentals, prompting & structured output, tool calling, retrieval basics, first agent, shipping",
+    "llm-application-developer": "Prompting, tool calling, streaming & async, model selection, prompt caching, retrieval, minimal evals",
+    "agentic-ai-engineer": "Agent loop, frameworks, RAG & memory, multi-agent, evals, guardrails, production, harness engineering",
+    "ai-eval-engineer": "Trace instrumentation, trajectory & tool evals, LLM-as-judge, RAG evals, eval-gated CI/CD, online evals",
+    "applied-ai-engineer": "AI feature design, production prompting, RAG in product, orchestration, product agents, guardrails",
+    "rag-engineer": "Ingestion & chunking, embeddings, vector DBs & ANN tuning, learning-to-rank, hybrid retrieval, reranking",
+    "senior-agentic-ai-engineer": "Agent systems from an architecture, eval & observability infra, multi-agent at scale, reliability, cost",
+    "agentic-systems-architect": "When not to use an agent, orchestration & memory architecture, eval harnesses, security, durable execution"
+  },
+  "quick_start_role": "agentic-ai-developer",
+  "technologies": {
+    "Model APIs": "Anthropic, OpenAI",
+    "Agent frameworks": "LangGraph, CrewAI, AutoGen, LangChain, LlamaIndex",
+    "Tools & protocols": "Model Context Protocol (MCP), Pydantic, FastAPI",
+    "Coding-agent harnesses": "Claude Code, Codex CLI, Claude Agent SDK",
+    "Retrieval": "pgvector, Chroma, Qdrant, BM25 hybrid search, reranking",
+    "Production": "Temporal, Docker, Kubernetes, GitHub Actions",
+    "Observability & evals": "OpenTelemetry, Langfuse, LangSmith, Phoenix, Ragas, Inspect",
+    "Safety & governance": "OWASP LLM Top 10, NIST AI RMF, EU AI Act"
+  },
+  "discussions": true,
+  "career_progression": true
+}

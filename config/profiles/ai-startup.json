@@ -1,0 +1,37 @@
+{
+  "tagline": "An open-source startup operating school for technical founders — functional curricula × role pathways × startup stages.",
+  "overview": "This org covers **turning it into a company** — the operating knowledge technical founders need: how startups work as a system, customer discovery and product-market fit, go-to-market, finance and fundraising, operations and governance, and the endgame. Each curriculum is one self-contained repository, and you learn by building real **founder artifacts**, not reading case studies.",
+  "highlights": [
+    "🧭 Start with **Startup Foundations**, then follow your role pathway"
+  ],
+  "sections": [
+    {
+      "heading": "🧭 The Three-Axis Model",
+      "body": "Startup knowledge is organized on three axes, not one — every module is tagged against all three. See **[startup-foundations](https://github.com/ai-startup-curriculum/startup-foundations)** for the canonical model.\n\n1. **Functional curricula** — the deep bodies of knowledge, authored once (Foundations → Customer Discovery → PMF → GTM → Sales → Growth; Corporate Structure → Equity / Governance / Fundraising; Economics → Modeling / Runway / Unit Economics). See the [dependency graph](https://github.com/ai-startup-curriculum/startup-foundations/blob/main/FUNCTIONAL_CURRICULA.md).\n2. **Role pathways** — curated views over the functional curricula (Founder/CEO, CTO, Product & GTM…), each declaring target coverage so a lesson is never rewritten six times.\n3. **Startup stages** — `IDEA → PRE-SEED → SEED → SERIES-A → GROWTH → MATURE`, so the curriculum tells you what matters *now* and what to ignore. See [STARTUP_STAGES](https://github.com/ai-startup-curriculum/startup-foundations/blob/main/STARTUP_STAGES.md)."
+    }
+  ],
+  "tracks_heading": "📚 Curricula",
+  "track_note": "Curricula are listed in path order for the autonomous pipeline; this is **not** a seniority ladder — a founding PM is not \"junior\" to a CTO. **Start with [startup-foundations](https://github.com/ai-startup-curriculum/startup-foundations)**, then follow your role pathway.",
+  "focus": {
+    "startup-foundations": "How startups work as a system, the dependency graph, stages, founder operating basics, reading the numbers",
+    "founder-ceo": "Customer discovery, business modeling, runway, pre-seed to seed fundraising, SAFEs & cap tables, founder-led sales",
+    "cto": "Architecture under uncertainty, build vs. buy, first engineering hires, tech debt as a business decision, scaling",
+    "startup-product-gtm": "Problem validation, PMF signals, positioning, ICP, founder-led sales, pricing & packaging, demand generation",
+    "cpo": "Discovery to PMF, prioritization, outcome roadmaps, discovery/delivery cadence, experimentation & AI evals",
+    "startup-finance-fundraising": "Startup accounting, unit economics, three-statement forecasting, cap tables, convertibles, valuation, fundraising",
+    "startup-operations-governance": "Entity formation, founder legal architecture, employment law, HR ops, equity-comp policy, compensation",
+    "startup-exit": "Endgame strategy, M&A structures & acquirer motivations, LOIs, diligence & data rooms, secondaries"
+  },
+  "quick_start_role": "startup-foundations",
+  "technologies_heading": "🧰 What You'll Build",
+  "technologies": {
+    "Validation": "Customer-discovery interview plans, PMF measurement, ICP and positioning docs",
+    "Finance": "Runway models, three-statement and driver-based forecasts, unit-economics and cohort models",
+    "Equity & fundraising": "Cap tables, SAFE and convertible scenarios, investor funnels",
+    "Operations & governance": "Entity and founder agreements, equity-comp policy, board packets",
+    "Exit": "Deal-structure comparisons, LOI term reviews, diligence data rooms"
+  },
+  "discussions": false,
+  "career_progression": false,
+  "role_column": "Curriculum"
+}
