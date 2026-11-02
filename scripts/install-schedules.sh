@@ -172,7 +172,8 @@ install_cron() {
 0 * * * * $(job_command daily-remediate)
 20 4 * * * $(job_command daily-issues)
 40 4 * * * $(job_command daily-steward)
-5 5 * * * $(job_command daily-discussions)${per_role_lines}
+5 5 * * * $(job_command daily-discussions)
+35 5 * * * $(job_command resolve-markers)${per_role_lines}
 $marker_end"
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -433,6 +434,8 @@ install_systemd() {
   write_systemd_pair "$unit_dir" "daily-discussions" "daily-discussions" "*-*-* 05:05:00"
   # Project-wide daily fleet digest -> ntfy (read-only; covers all domains).
   write_systemd_pair "$unit_dir" "fleet-digest" "fleet-digest" "*-*-* 09:05:00"
+  # needs-research resolution for the ai-infra org (05:35, off minute 0).
+  write_systemd_pair "$unit_dir" "resolve-markers" "resolve-markers" "*-*-* 05:35:00"
 
   install_per_role_research "$unit_dir"
   install_per_role_review "$unit_dir"
