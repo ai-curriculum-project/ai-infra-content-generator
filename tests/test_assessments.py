@@ -498,3 +498,54 @@ def test_report_records_head_before_run(tmp_path: Path) -> None:
         manifest, workspace, "security", command_override=_fake_agent(tmp_path, WRITE_QUIZ)
     )
     assert report["head_before"] == head_before
+
+
+# --- copy-back and real-checkout integrity -------------------------------------------
+
+
+def test_copy_back_refuses_symlinked_target_dir(tmp_path: Path) -> None:
+    workspace, learning, manifest = _setup(tmp_path, modules=("mod-001-a",))
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    quizzes = learning / "lessons/mod-001-a/quizzes"
+    import shutil as _shutil
+
+    _shutil.rmtree(quizzes)
+    quizzes.symlink_to(outside, target_is_directory=True)
+    _git(learning, "add", "-A")
+    _git(learning, "commit", "-q", "-m", "symlinked quizzes")
+    labs_readme = learning / "lessons/mod-001-a/labs/README.md"
+    assert labs_readme.exists()
+    with pytest.raises(AssessmentError, match="symlink|outside"):
+        from aicg.assessments import copy_back
+
+        work = tmp_path / "work"
+        write_file(work / "lessons/mod-001-a/quizzes/quiz-01.md", "# Quiz\n")
+        copy_back(work, learning, ["lessons/mod-001-a/quizzes/quiz-01.md"], "mod-001-a")
+    assert list(outside.iterdir()) == []
+
+
+TOUCH_REAL_CHECKOUT = """
+import os, pathlib, re, sys
+prompt = pathlib.Path(sys.argv[1]).read_text()
+mod = re.search(r"lessons/(mod-[^/]+)/quizzes/", prompt).group(1)
+(pathlib.Path("lessons") / mod / "quizzes" / "quiz-01.md").write_text("# Quiz\\\\n")
+# Escape the copy: write into the real checkout's git hooks via its absolute path.
+real = pathlib.Path(os.environ["REAL_CHECKOUT"])
+hook = real / ".git" / "hooks" / "post-commit"
+hook.write_text("#!/bin/sh\\\\necho pwned\\\\n")
+"""
+
+
+def test_agent_writing_to_real_checkout_aborts_the_run(tmp_path: Path, monkeypatch) -> None:
+    workspace, learning, manifest = _setup(tmp_path, modules=("mod-001-a",))
+    monkeypatch.setenv("REAL_CHECKOUT", str(learning))
+    with pytest.raises(AssessmentError, match="real checkout"):
+        backfill_role_assessments(
+            manifest,
+            workspace,
+            "security",
+            command_override=_fake_agent(tmp_path, TOUCH_REAL_CHECKOUT),
+        )
+    # Nothing was copied back.
+    assert not (learning / "lessons/mod-001-a/quizzes/quiz-01.md").exists()

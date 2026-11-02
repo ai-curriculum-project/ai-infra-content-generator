@@ -17,7 +17,9 @@ Like ``learning_content``, committing and pushing is the caller's job.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -296,11 +298,51 @@ def diff_copy(original: Path, copy: Path) -> tuple[list[str], list[str]]:
     return changed, deleted
 
 
-def copy_back(copy: Path, learning_path: Path, paths: list[str]) -> None:
-    for rel in paths:
-        target = learning_path / rel
+def _safe_target(learning_path: Path, rel: str, module_id: str) -> Path:
+    """Resolve ``rel`` inside the real checkout, refusing any symlinked component
+    and anything outside the module's quizzes/ or labs/."""
+    root = learning_path.resolve()
+    target = root / rel
+    current = root
+    for part in Path(rel).parts:
+        current = current / part
+        if current.is_symlink():
+            raise AssessmentError(f"refusing to write through symlink: {current}")
+    allowed = [root / "lessons" / module_id / d for d in ("quizzes", "labs")]
+    if not any(target.resolve().is_relative_to(a) for a in allowed):
+        raise AssessmentError(f"refusing to write outside quizzes/labs: {rel}")
+    return target
+
+
+def copy_back(copy: Path, learning_path: Path, paths: list[str], module_id: str) -> None:
+    """Copy allowed files from the isolated copy into the real checkout."""
+    targets = [(rel, _safe_target(learning_path, rel, module_id)) for rel in paths]
+    for rel, target in targets:
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes((copy / rel).read_bytes())
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
+        fd = os.open(target, flags, 0o644)
+        with os.fdopen(fd, "wb") as handle:
+            handle.write((copy / rel).read_bytes())
+
+
+def checkout_fingerprint(repo: Path) -> str:
+    """Hash of what matters in the real checkout: HEAD, dirty files and their
+    content, and git's config and hooks. Used to detect an agent that escapes
+    its isolated copy and writes here."""
+    digest = hashlib.sha256()
+    digest.update(head_sha(repo).encode())
+    for rel in sorted(changed_paths(repo)):
+        target = repo / rel
+        digest.update(rel.encode())
+        if target.is_file() and not target.is_symlink():
+            digest.update(target.read_bytes())
+    for rel in (".git/config", ".git/HEAD", ".git/packed-refs"):
+        if (repo / rel).is_file():
+            digest.update((repo / rel).read_bytes())
+    hooks = repo / ".git" / "hooks"
+    for f in sorted(p for p in hooks.rglob("*") if p.is_file()) if hooks.is_dir() else []:
+        digest.update(str(f.relative_to(repo)).encode() + f.read_bytes())
+    return digest.hexdigest()
 
 
 # --- orchestration -------------------------------------------------------------------
@@ -354,7 +396,13 @@ def _attempt_module(
             work_id=f"assessments-{gap.module_id}",
             runner=str(_RUNNER_ROOT),
         )
+        fingerprint = checkout_fingerprint(learning_path)
         result = run_agent_command(formatted, cwd=work)
+        if checkout_fingerprint(learning_path) != fingerprint:
+            raise AssessmentError(
+                f"real checkout {learning_path} changed during the agent run; aborting "
+                f"(the agent must only write to its isolated copy)"
+            )
         if result.limit_reached:
             raise AgentLimitReached(result)
         changed, deleted = diff_copy(learning_path, work)
@@ -364,7 +412,7 @@ def _attempt_module(
         if result.returncode != 0:
             return "failed", []
         allowed = [p for p in changed if not p.startswith(_SCRATCH_PREFIXES)]
-        copy_back(work, learning_path, allowed)
+        copy_back(work, learning_path, allowed, gap.module_id)
         return ("filled" if allowed else "unchanged"), []
 
 
