@@ -67,6 +67,7 @@ Jobs:
   daily-issues
   daily-steward
   daily-discussions
+  backfill-assessments  (daily per domain: author quizzes/labs for ONE module still on placeholders)
 
 Options:
   --workspace PATH   Curriculum workspace. Default: parent of runner repo.
@@ -427,6 +428,65 @@ for r in sorted(d['roles'], key=lambda x: x.get('level',0)):
         # expected — suppress the per-attempt ⏸️ push (✅ on success still fires).
         AICG_LOCK_HELD=1 AICG_FILL_QUIET=1 bash "$0" generate-role "$FILL_PICK" \
           --workspace "$WORKSPACE" --manifest "$MANIFEST" --state-dir "$STATE_DIR"
+      fi
+      ;;
+    backfill-assessments)
+      # Daily quiz/lab backfill: pick the lowest-level role in this domain with
+      # an authored module whose quizzes/ or labs/ are still bootstrap
+      # placeholders, and author ONE module's assessments from its chapters.
+      # The agent may only touch that module's quizzes/ and labs/; anything else
+      # is reverted inside aicg (see assessments.py). Only those dirs are staged.
+      run_aicg_org sync
+      BA_ROLE=$(run_aicg_org backfill-assessments --list 2>/dev/null \
+        | sed -n 's/^\([a-z0-9-][a-z0-9-]*\): [0-9][0-9]* module(s)$/\1/p' | head -1)
+      if [[ -z "$BA_ROLE" ]]; then
+        log "backfill-assessments: no assessment gaps; nothing to do"
+      else
+        log "backfill-assessments: role -> $BA_ROLE"
+        BA_LREPO=$(python3 -c "
+import json
+d=json.load(open('$MANIFEST'))
+print(next((r['learning_repo'] for r in d['roles'] if r['id']=='$BA_ROLE'),''))" 2>/dev/null || true)
+        # Fail closed: commit ONLY when aicg exited 0 and its report lists
+        # exactly one filled module with a safe id (the agent itself works on an
+        # isolated copy with no .git). Before pushing, verify the new commit is
+        # the only one on head_before and touches only that module's
+        # quizzes/ and labs/.
+        if run_aicg_org backfill-assessments --role "$BA_ROLE" --max-modules 1 \
+            && [[ -n "$BA_LREPO" && -d "$WORKSPACE/$BA_LREPO/.git" ]]; then
+          BA_MOD=$(python3 -c "
+import json, re
+r=json.load(open('$WORKSPACE/$BA_LREPO/.aicg/assessment-backfill-report.json'))
+f=r.get('modules_filled') or []
+print(f[0] if len(f)==1 and re.fullmatch(r'mod-[a-z0-9][a-z0-9-]*', f[0]) else '')" 2>/dev/null || true)
+          BA_HEAD=$(python3 -c "
+import json, re
+h=json.load(open('$WORKSPACE/$BA_LREPO/.aicg/assessment-backfill-report.json')).get('head_before','')
+print(h if re.fullmatch(r'[0-9a-f]{40}', h or '') else '')" 2>/dev/null || true)
+          if [[ -z "$BA_MOD" || -z "$BA_HEAD" ]]; then
+            log "backfill-assessments: nothing authored for $BA_ROLE (capped, rejected, or unchanged)"
+          else
+            ( cd "$WORKSPACE/$BA_LREPO"
+              git add -- "lessons/$BA_MOD/quizzes" "lessons/$BA_MOD/labs" 2>/dev/null || true
+              if ! git diff --cached --quiet 2>/dev/null; then
+                # Hooks off: the agent ran in this checkout, so never execute
+                # anything it might have left in .git/hooks.
+                git -c core.hooksPath=/dev/null -c core.fsmonitor=false \
+                  -c user.email="aicg@veriswarm.ai" -c user.name="AICG Runner" \
+                  commit -q -m "content: author $BA_MOD quizzes/labs (aicg backfill-assessments)" \
+                  && [[ "$(git rev-parse HEAD~1)" == "$BA_HEAD" ]] \
+                  && [[ "$(git rev-list --count "$BA_HEAD..HEAD")" == "1" ]] \
+                  && [[ -z "$(git diff --name-only "$BA_HEAD" HEAD \
+                         | grep -vE "^lessons/$BA_MOD/(quizzes|labs)/")" ]] \
+                  && git -c core.hooksPath=/dev/null push origin HEAD \
+                  && log "pushed assessments for $BA_ROLE: $BA_MOD" \
+                  && notify_ntfy "📝 $(basename "$MANIFEST" .yaml) · $BA_ROLE assessments" \
+                       "memo" "default" "Quizzes/labs authored for $BA_MOD"
+              fi ) || log "assessment commit/push failed for $BA_ROLE"
+          fi
+        else
+          log "backfill-assessments failed for $BA_ROLE; nothing committed"
+        fi
       fi
       ;;
     daily-pipeline-tick)

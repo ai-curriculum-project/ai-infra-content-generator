@@ -11,6 +11,7 @@
 #   - aicg-<domain>-generate-role@<role>.timer  (author content from the plan; day=index)
 #   - aicg-<domain>-daily.timer                 (daily authoring tick from the queue)
 #   - aicg-<domain>-fill.timer                  (daily: fill the next unfilled role)
+#   - aicg-<domain>-backfill-assessments.timer  (daily: quizzes/labs for one module)
 # all pointing at the domain's manifest + a per-domain state dir, and offset by
 # --hour-offset so 4 domains don't hit the shared Claude subscription at once.
 #
@@ -148,6 +149,11 @@ write_unit "$DOMAIN-daily" "$(job_cmd_noarg daily-remediate)" "*-*-* 22:$FMIN:00
 # alert fires separately on "Not logged in").
 write_unit "$DOMAIN-fill" "$(job_cmd_noarg fill-next)" "*-*-* 03:$FMIN:00"
 
+# Off-peak quiz/lab backfill: author assessments for ONE module per domain per
+# night (02:FMIN — its own hour, clear of research 01, fill 03, generate 04).
+# Self-terminating: once no module has placeholder quizzes/labs it no-ops.
+write_unit "$DOMAIN-backfill-assessments" "$(job_cmd_noarg backfill-assessments)" "*-*-* 02:$FMIN:00"
+
 if [[ "$DRY_RUN" -eq 0 ]]; then
   systemctl --user daemon-reload
   # Tear down stale per-role timers for roles no longer in the manifest.
@@ -162,5 +168,5 @@ if [[ "$DRY_RUN" -eq 0 ]]; then
     systemctl --user disable --now "$base" 2>/dev/null || true
     rm -f "$t"
   done
-  log "Installed $DOMAIN timers (${#ROLES[@]} research + ${#ROLES[@]} generate + ${#ROLES[@]} review + 1 daily + 1 fill)."
+  log "Installed $DOMAIN timers (${#ROLES[@]} research + ${#ROLES[@]} generate + ${#ROLES[@]} review + 1 daily + 1 fill + 1 backfill)."
 fi

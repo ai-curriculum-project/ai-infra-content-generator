@@ -339,7 +339,35 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional single module id (e.g. mod-101-foundations). Defaults to all modules in the plan.",
     )
+    org_generate_learning.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Re-author modules that already have lecture content (skipped by default).",
+    )
     org_generate_learning.set_defaults(func=cmd_org_generate_learning)
+
+    org_backfill = org_subparsers.add_parser(
+        "backfill-assessments",
+        help="Author quizzes/labs for authored modules whose quizzes/ or labs/ are still placeholders",
+    )
+    add_org_args(org_backfill)
+    org_backfill.add_argument(
+        "--role",
+        default=None,
+        help="Role id to backfill. Defaults to the lowest-level role in the manifest that has gaps.",
+    )
+    org_backfill.add_argument(
+        "--max-modules",
+        type=int,
+        default=1,
+        help="Maximum modules to backfill in this run (default 1).",
+    )
+    org_backfill.add_argument(
+        "--list",
+        action="store_true",
+        help="Only list roles and modules with gaps; don't run the agent.",
+    )
+    org_backfill.set_defaults(func=cmd_org_backfill_assessments)
 
     org_bootstrap = org_subparsers.add_parser(
         "bootstrap-role",
@@ -1358,6 +1386,7 @@ def cmd_org_generate_learning(args: argparse.Namespace) -> int:
             role_id=args.role,
             module=args.module,
             state_dir=resolve_org_state_dir(args, manifest),
+            overwrite=args.overwrite,
         )
     except LearningContentError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -1373,6 +1402,59 @@ def cmd_org_generate_learning(args: argparse.Namespace) -> int:
         print(f"  ✓ {mod}")
     for mod in report["modules_failed"]:
         print(f"  ✗ {mod}")
+    if report.get("modules_skipped"):
+        print(f"  skipped {len(report['modules_skipped'])} already-authored module(s); use --overwrite to re-author")
+    return 0
+
+
+def _print_assessment_gaps(manifest, workspace) -> int:
+    import json as _json
+
+    from .assessments import find_assessment_gaps, roles_with_gaps
+
+    roles = roles_with_gaps(manifest, workspace)
+    if not roles:
+        print("No assessment gaps.")
+        return 0
+    by_id = {role.id: role for role in manifest.roles}
+    for role_id in roles:
+        learning = workspace.resolve() / by_id[role_id].learning_repo
+        plan = _json.loads((learning / ".aicg" / "curriculum-plan.json").read_text(encoding="utf-8"))
+        gaps = find_assessment_gaps(learning, plan)
+        print(f"{role_id}: {len(gaps)} module(s)")
+        for gap in gaps:
+            parts = [name for name, need in (("quiz", gap.needs_quiz), ("labs", gap.needs_labs)) if need]
+            print(f"  - {gap.module_id}: {', '.join(parts)}")
+    return 0
+
+
+def cmd_org_backfill_assessments(args: argparse.Namespace) -> int:
+    from .agent_cli import AgentLimitReached
+    from .assessments import AssessmentError, backfill_role_assessments, roles_with_gaps
+
+    manifest = resolve_manifest(args)
+    workspace = resolve_workspace(args)
+    if args.list:
+        return _print_assessment_gaps(manifest, workspace)
+    role_id = args.role or next(iter(roles_with_gaps(manifest, workspace)), None)
+    if role_id is None:
+        print("backfill-assessments: no roles with assessment gaps; nothing to do")
+        return 0
+    try:
+        report = backfill_role_assessments(
+            manifest, workspace, role_id, max_modules=args.max_modules
+        )
+    except (AssessmentError, AgentLimitReached) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(
+        f"Backfilled assessments for {role_id}: filled={report['modules_filled']} "
+        f"unchanged={report['modules_unchanged']} failed={report['modules_failed']} "
+        f"rejected={report['modules_rejected']} deferred={report['deferred_module']} "
+        f"gaps_remaining={report['gaps_remaining']}"
+    )
+    for mod, paths in report["rejections"].items():
+        print(f"  ✗ {mod} rejected: edited outside quizzes/labs: {', '.join(paths[:5])}")
     return 0
 
 

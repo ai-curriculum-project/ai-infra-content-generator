@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
-import pytest
+import json
+import sys
+from pathlib import Path
 
-from aicg.learning_content import build_module_content_prompt
+import pytest
+from conftest import write_file, write_minimal_manifest
+
+from aicg.learning_content import build_module_content_prompt, generate_role_learning_content
+from aicg.org_config import load_manifest
 
 
 @pytest.fixture
@@ -73,3 +79,48 @@ def test_prompt_excludes_sibling_modules(module: dict) -> None:
         sibling_module_ids=["mod-101-llm-fundamentals", "mod-102-prompt-engineering"],
     )
     assert "mod-102-prompt-engineering" in prompt  # named as a do-not-touch sibling
+
+
+# --- skip guard: never re-author modules that already have chapters -----------
+
+
+def _role_workspace(tmp_path: Path) -> tuple[Path, Path]:
+    workspace = tmp_path / "workspace"
+    learning = workspace / "ai-infra-security-learning"
+    write_file(learning / "lessons/mod-001-done/01-intro.md", "# Hand-written\n")
+    write_file(learning / "lessons/mod-002-stub/README.md", "# Stub\n")
+    plan = {"modules": [{"id": "mod-001-done"}, {"id": "mod-002-stub"}]}
+    write_file(learning / ".aicg/curriculum-plan.json", json.dumps(plan))
+    return workspace, learning
+
+
+def _recording_agent(tmp_path: Path) -> tuple[str, Path]:
+    log = tmp_path / "calls.txt"
+    script = write_file(
+        tmp_path / "rec.py",
+        f"import sys; open({str(log)!r}, 'a').write(sys.argv[1] + '\\n')\n",
+    )
+    return f"{sys.executable} {script} {{work_id}}", log
+
+
+def test_generate_skips_modules_that_already_have_chapters(tmp_path: Path) -> None:
+    workspace, _ = _role_workspace(tmp_path)
+    manifest = load_manifest(write_minimal_manifest(tmp_path / "aicg-org.yaml"))
+    command, log = _recording_agent(tmp_path)
+    report = generate_role_learning_content(
+        manifest, workspace, "security", command_override=command
+    )
+    assert report["modules_skipped"] == ["mod-001-done"]
+    assert report["modules_generated"] == ["mod-002-stub"]
+    assert log.read_text().split() == ["learning-mod-002-stub"]
+
+
+def test_generate_overwrite_reauthors_existing_modules(tmp_path: Path) -> None:
+    workspace, _ = _role_workspace(tmp_path)
+    manifest = load_manifest(write_minimal_manifest(tmp_path / "aicg-org.yaml"))
+    command, log = _recording_agent(tmp_path)
+    report = generate_role_learning_content(
+        manifest, workspace, "security", command_override=command, overwrite=True
+    )
+    assert report["modules_skipped"] == []
+    assert sorted(log.read_text().split()) == ["learning-mod-001-done", "learning-mod-002-stub"]
