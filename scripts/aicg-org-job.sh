@@ -631,6 +631,28 @@ if files and all(ok.fullmatch(f) for f in files) and re.fullmatch(r'[0-9a-f]{40}
       done
       log "completeness: updated $CHANGED repos"
       ;;
+    discover-roles)
+      # Monthly, per domain: search postings for job titles no role in any
+      # domain covers, filter hard, and open "New role proposal" issues in the
+      # parent org. A maintainer approves with the `approved` label.
+      run_aicg_org sync
+      OUT=$("$AICG_BIN" org discover-roles --workspace "$WORKSPACE" --manifest "$MANIFEST" \
+        --state-dir "$STATE_DIR" --apply 2>&1) || log "discover-roles exited non-zero"
+      log "$OUT"
+      ;;
+    approvals)
+      # Daily, all domains: act on proposal issues labeled `approved` (merge +
+      # promote + author content; create + author new roles), close the PRs of
+      # declined proposals, and ping once for every new proposal awaiting a decision.
+      OUT=$("$AICG_BIN" org approvals --workspace "$WORKSPACE" --apply 2>&1) || log "approvals exited non-zero"
+      log "$OUT"
+      while IFS= read -r line; do
+        notify_ntfy "🗳️ Proposal awaiting your approval" "ballot_box_with_check" "default" "${line#NEW PROPOSAL: }"
+      done < <(printf '%s\n' "$OUT" | grep '^NEW PROPOSAL: ' || true)
+      while IFS= read -r line; do
+        notify_ntfy "AICG approval: $line" "gear" "default" "$line"
+      done < <(printf '%s\n' "$OUT" | grep -E '^issue #[0-9]+: (applied|failed)' || true)
+      ;;
     fleet-digest)
       # Project-wide daily observability: one ntfy push summarizing fill
       # progress across all domains (N/total roles authored, mode, BAR).

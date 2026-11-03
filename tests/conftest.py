@@ -4,6 +4,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
@@ -106,3 +108,14 @@ def write_minimal_manifest(path: Path) -> Path:
         ],
     }
     return write_file(path, json.dumps(data, indent=2) + "\n")
+
+
+@pytest.fixture(autouse=True)
+def _no_real_github_issues(monkeypatch):
+    """Proposal and approval code must never reach the real GitHub from tests."""
+    import aicg.role_discovery as role_discovery
+
+    def refuse(args):
+        raise RuntimeError(f"test tried to call real gh: {args[:2]}")
+
+    monkeypatch.setattr(role_discovery, "default_gh", refuse)

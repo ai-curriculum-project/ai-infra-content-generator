@@ -483,6 +483,27 @@ def build_parser() -> argparse.ArgumentParser:
     )
     org_completeness.set_defaults(func=cmd_org_completeness)
 
+    org_discover = org_subparsers.add_parser(
+        "discover-roles",
+        help="Search job postings for titles no role covers; propose survivors as issues",
+    )
+    add_org_args(org_discover)
+    org_discover.add_argument("--all-domains", action="store_true", help="Every domain, not just --domain.")
+    org_discover.add_argument("--apply", action="store_true", help="Open the proposal issues (default: dry run).")
+    org_discover.add_argument(
+        "--candidates", type=Path, default=None,
+        help="Validate this candidates.json instead of running the research agent.",
+    )
+    org_discover.set_defaults(func=cmd_org_discover_roles)
+
+    org_approvals = org_subparsers.add_parser(
+        "approvals",
+        help="Act on proposal issues a maintainer labeled `approved` (and close declined PRs)",
+    )
+    add_org_args(org_approvals)
+    org_approvals.add_argument("--apply", action="store_true", help="Do the work (default: show the plan).")
+    org_approvals.set_defaults(func=cmd_org_approvals)
+
     org_bootstrap_prompt = org_subparsers.add_parser(
         "bootstrap-prompt",
         help="(Re)write a role's research+plan prompt packet (no scaffold) for seeding",
@@ -1597,6 +1618,87 @@ def cmd_org_completeness(args: argparse.Namespace) -> int:
     if args.family:
         changed = write_family_matrix(manifests, workspace, Path(args.family))
         print(f"{'wrote' if changed else 'unchanged'} {args.family}")
+    return 0
+
+
+def _all_domain_manifests():
+    from .domains import domain_config_path, list_domains
+
+    return {d: load_manifest(domain_config_path(d)) for d in list_domains()}
+
+
+def cmd_org_discover_roles(args: argparse.Namespace) -> int:
+    import json as _json
+    from datetime import date as _date
+
+    from .domain_provision import _org_display
+    from .domains import DEFAULT_DOMAIN, _runner_root
+    from .orientation import load_stances
+    from .role_discovery import (
+        known_names, open_proposals, research_agent, run_discovery, validate_candidates,
+    )
+
+    family = _all_domain_manifests()
+    stances = load_stances(_runner_root() / "config" / "stances.json")["domains"]
+    display = {d: _org_display(m.org) for d, m in family.items()}
+    if args.manifest and not args.all_domains:  # the job wrapper passes --manifest, not --domain
+        org = load_manifest(args.manifest).org.lower()
+        targets = [d for d, m in family.items() if m.org.lower() == org]
+    else:
+        targets = list(family) if args.all_domains else [getattr(args, "domain", None) or DEFAULT_DOMAIN]
+    today = _date.today()
+    for domain in targets:
+        manifest = family[domain]
+        if args.candidates:
+            accepted, rejected = validate_candidates(
+                _json.loads(args.candidates.read_text(encoding="utf-8")),
+                known_names(family.values()), today=today, domains=set(family))
+            report = {"status": "ok", "accepted": accepted, "rejected": rejected}
+        else:
+            report = run_discovery(
+                domain, manifest, list(family.values()), stances.get(domain, {}),
+                state_dir=state_dir_for_manifest(manifest, None if args.all_domains else args.state_dir),
+                today=today, domains=set(family), agent=research_agent(manifest, _runner_root()))
+        print(f"{domain}: {report['status']} — {len(report['accepted'])} accepted, "
+              f"{len(report['rejected'])} rejected")
+        for item in report["rejected"]:
+            print(f"  - rejected {item.get('title')!r}: {item['reason']}")
+        for result in open_proposals(report["accepted"], display, apply=args.apply):
+            print(f"  + {result['status']}: {result['title']} {result.get('url', '')}".rstrip())
+    return 0
+
+
+def cmd_org_approvals(args: argparse.Namespace) -> int:
+    from .approvals import Context, close_declined, process_approvals
+    from .domains import _runner_root
+    from .role_discovery import default_gh
+
+    from .domains import domain_config_path
+
+    family = _all_domain_manifests()
+    ctx = Context(
+        runner_dir=_runner_root(),
+        workspace=resolve_workspace(args),
+        manifest_for={d: domain_config_path(d) for d in family},
+        learning_repo_for={(d, r.id): r.learning_repo for d, m in family.items() for r in m.roles},
+    )
+    for result in process_approvals(ctx, gh=default_gh, apply=args.apply):
+        steps = f" ({', '.join(result['steps'])})" if result.get("steps") else ""
+        print(f"issue #{result['issue']}: {result['status']}{steps}")
+    for pr in close_declined(default_gh, apply=args.apply):
+        print(f"{'closed' if args.apply else 'would close'} declined proposal PR {pr}")
+    if args.apply:  # announce each new undecided proposal exactly once
+        import json as _json
+
+        from .approvals import new_pending
+
+        seen_path = state_dir_for_manifest(family["ai-infra"], None) / "approvals-announced.json"
+        seen = set(_json.loads(seen_path.read_text())) if seen_path.exists() else set()
+        fresh = new_pending(default_gh, seen)
+        for issue in fresh:
+            print(f"NEW PROPOSAL: {issue['title']} {issue['url']}")
+        seen_path.parent.mkdir(parents=True, exist_ok=True)
+        seen_path.write_text(_json.dumps(sorted(seen | {i["number"] for i in fresh})))
     return 0
 
 

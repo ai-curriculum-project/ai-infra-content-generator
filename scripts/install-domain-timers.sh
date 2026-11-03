@@ -149,6 +149,10 @@ write_unit "$DOMAIN-daily" "$(job_cmd_noarg daily-remediate)" "*-*-* 00,07,19,22
 # queue is built once and never refreshed. Sun 06:FMIN, its own hour.
 write_unit "$DOMAIN-weekly-audit" "$(job_cmd_noarg weekly-audit)" "Sun 06:$FMIN:00"
 
+# Monthly role discovery: titles no role covers become proposal issues. Day 28
+# at 01:FMIN, clear of per-role research (days 1-N at 01:FMIN).
+write_unit "$DOMAIN-discover-roles" "$(job_cmd_noarg discover-roles)" "*-*-28 01:$FMIN:00"
+
 # Off-peak fill: author the next unfilled role (self-seeding), ONCE per night.
 # Deliberately throttled to a single deep-off-peak run per domain (03:FMIN) to
 # keep the runner's footprint low on the subscription token (heavy automation
@@ -181,5 +185,5 @@ if [[ "$DRY_RUN" -eq 0 ]]; then
     systemctl --user disable --now "$base" 2>/dev/null || true
     rm -f "$t"
   done
-  log "Installed $DOMAIN timers (${#ROLES[@]} research + ${#ROLES[@]} generate + ${#ROLES[@]} review + 1 daily (x4/day) + 1 weekly-audit + 1 fill + 1 backfill + 1 markers)."
+  log "Installed $DOMAIN timers (${#ROLES[@]} research + ${#ROLES[@]} generate + ${#ROLES[@]} review + 1 daily (x4/day) + 1 weekly-audit + 1 discover-roles + 1 fill + 1 backfill + 1 markers)."
 fi
