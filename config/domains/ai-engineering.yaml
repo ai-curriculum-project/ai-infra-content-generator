@@ -211,8 +211,7 @@
       "aliases": [
         "Staff Agentic AI Engineer",
         "Senior AI Agent Engineer",
-        "Lead Applied AI Engineer",
-        "Agentic Platform Engineer"
+        "Lead Applied AI Engineer"
       ]
     },
     {
@@ -242,6 +241,48 @@
         "AI Solutions Engineer",
         "Customer AI Engineer",
         "Applied AI Solutions Architect"
+      ]
+    },
+    {
+      "id": "agent-platform-engineer",
+      "title": "Agent Platform Engineer",
+      "level": 40,
+      "learning_repo": "agent-platform-engineer-learning",
+      "solution_repo": "agent-platform-engineer-solutions",
+      "aliases": [
+        "Agentic Platform Engineer",
+        "AI Platform Engineer - Agents",
+        "Agent Infrastructure Engineer",
+        "AI Developer Platform Engineer",
+        "AI Developer Productivity Engineer"
+      ]
+    },
+    {
+      "id": "voice-agent-engineer",
+      "title": "Voice & Multimodal Agent Engineer",
+      "level": 35,
+      "learning_repo": "voice-agent-engineer-learning",
+      "solution_repo": "voice-agent-engineer-solutions",
+      "aliases": [
+        "Voice AI Engineer",
+        "Conversational AI Engineer",
+        "Speech AI Engineer",
+        "Multimodal AI Engineer",
+        "Real-time Voice Agent Engineer"
+      ]
+    },
+    {
+      "id": "ai-engineering-manager",
+      "title": "AI Engineering Manager",
+      "level": 45,
+      "learning_repo": "ai-engineering-manager-learning",
+      "solution_repo": "ai-engineering-manager-solutions",
+      "aliases": [
+        "Engineering Manager, AI",
+        "Engineering Manager - Applied AI",
+        "Engineering Manager, Machine Learning",
+        "AI Team Lead",
+        "Head of AI Engineering"
       ]
     }
   ]

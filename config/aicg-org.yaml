@@ -225,6 +225,21 @@
         "Inference Optimization Engineer",
         "AI Inference Platform Engineer"
       ]
+    },
+    {
+      "id": "sre",
+      "title": "AI Reliability Engineer (AI SRE)",
+      "level": 35,
+      "learning_repo": "ai-infra-sre-learning",
+      "solution_repo": "ai-infra-sre-solutions",
+      "aliases": [
+        "AI SRE",
+        "ML Site Reliability Engineer",
+        "Site Reliability Engineer - AI",
+        "AI Reliability Engineer",
+        "LLM Ops Engineer",
+        "AI Production Engineer"
+      ]
     }
   ]
 }

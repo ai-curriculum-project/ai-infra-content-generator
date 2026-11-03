@@ -245,6 +245,34 @@
         "Head of AI Governance",
         "Director of AI Strategy"
       ]
+    },
+    {
+      "id": "ai-privacy-engineer",
+      "title": "AI Privacy Engineer",
+      "level": 30,
+      "learning_repo": "ai-privacy-engineer-learning",
+      "solution_repo": "ai-privacy-engineer-solutions",
+      "aliases": [
+        "Privacy Engineer, AI",
+        "Privacy Engineer - Machine Learning",
+        "AI Data Protection Engineer",
+        "Privacy-Preserving ML Engineer"
+      ]
+    },
+    {
+      "id": "ai-auditor",
+      "title": "AI Auditor",
+      "level": 45,
+      "learning_repo": "ai-auditor-learning",
+      "solution_repo": "ai-auditor-solutions",
+      "aliases": [
+        "AI Assurance Auditor",
+        "Algorithmic Auditor",
+        "AI Audit Manager",
+        "ISO 42001 Lead Auditor",
+        "AI Assurance Manager",
+        "Responsible AI Auditor"
+      ]
     }
   ]
 }

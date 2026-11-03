@@ -29,7 +29,8 @@
     "senior-ml-engineer": "ML systems architecture, production LLM integration, experimentation at scale, ML SLOs, technical leadership",
     "training-pipeline-engineer": "Distributed training, data pipelines at scale, cluster orchestration, checkpointing, elastic training, throughput",
     "staff-ml-engineer": "Multi-team ML architecture, foundation-model training programs, ML platform strategy, capacity & TCO",
-    "principal-ml-engineer": "Org & industry ML strategy, north-star ML architecture, influence without authority, the technical bar"
+    "principal-ml-engineer": "Org & industry ML strategy, north-star ML architecture, influence without authority, the technical bar",
+    "ai-data-engineer": "Data sourcing & licensing, curation & dedup, labeling ops, synthetic data, contamination checks, dataset versioning"
   },
   "track_note": "Specialist tracks (fine-tuning, evaluation, NLP, training pipelines) branch from ML Engineer and can be taken in any order.",
   "quick_start_role": "ml-engineer",

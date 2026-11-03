@@ -11,7 +11,7 @@
       "max_level": 29
     },
     {
-      "title": "🔵 Assurance, Security & Safety (L35–L40)",
+      "title": "🔵 Assurance, Privacy, Security & Safety (L30–L45)",
       "min_level": 30,
       "max_level": 49
     },
@@ -34,7 +34,9 @@
     "agentic-safety-engineer": "Agent threat modeling, prompt injection & jailbreaks, dangerous-capability evals, excessive-agency containment",
     "senior-ai-governance-architect": "AI control libraries, policy as code, multi-jurisdiction reconciliation, AI management systems, risk appetite",
     "head-of-ai-governance": "Running the program, board & audit reporting, regulator engagement, regulatory change, program maturity",
-    "chief-ai-officer": "AI regulation & risk, model risk management, responsible AI, AI security, audit evidence, board reporting"
+    "chief-ai-officer": "AI regulation & risk, model risk management, responsible AI, AI security, audit evidence, board reporting",
+    "ai-privacy-engineer": "Data minimization, PII detection & redaction, memorization & extraction risk, consent & DSRs for models, GDPR/state-law reviews",
+    "ai-auditor": "Audit planning vs ISO/IEC 42001, NIST AI RMF & EU AI Act, evidence sampling, control testing, findings, assurance reports"
   },
   "quick_start_role": "ai-governance-analyst",
   "technologies_heading": "🛠️ Frameworks & Tools Covered",

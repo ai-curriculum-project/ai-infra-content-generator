@@ -226,6 +226,21 @@
         "Distinguished ML Engineer",
         "Applied ML Architect"
       ]
+    },
+    {
+      "id": "ai-data-engineer",
+      "title": "AI Data Engineer",
+      "level": 30,
+      "learning_repo": "ai-data-engineer-learning",
+      "solution_repo": "ai-data-engineer-solutions",
+      "aliases": [
+        "Data Engineer, AI",
+        "ML Data Engineer",
+        "Training Data Engineer",
+        "Data Curation Engineer",
+        "Synthetic Data Engineer",
+        "AI Data Operations Engineer"
+      ]
     }
   ]
 }
