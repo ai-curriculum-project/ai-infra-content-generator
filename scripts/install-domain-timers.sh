@@ -138,8 +138,16 @@ for role in "${ROLES[@]}"; do
   write_unit "$DOMAIN-review-role@$role"   "$(job_cmd review-role "$role")"   "*-*-$vday 23:$FMIN:00"
 done
 
-# One daily authoring tick for the domain (queue drain) — off-peak, 22:FMIN.
-write_unit "$DOMAIN-daily" "$(job_cmd_noarg daily-remediate)" "*-*-* 22:$FMIN:00"
+# Authoring ticks for the domain (queue drain): four a day, each takes the
+# top queued item. Was once a day, which left a 500-item backlog (skeleton
+# modules + stub solutions, surfaced by the depth audit) needing over a year.
+# Four keeps the subscription footprint modest (see the fill note below).
+write_unit "$DOMAIN-daily" "$(job_cmd_noarg daily-remediate)" "*-*-* 00,07,19,22:$FMIN:00"
+
+# Weekly queue rebuild: re-audit every repo so new gaps (including skeletons
+# and stubs from the depth checks) get queued. Without it a sibling domain's
+# queue is built once and never refreshed. Sun 06:FMIN, its own hour.
+write_unit "$DOMAIN-weekly-audit" "$(job_cmd_noarg weekly-audit)" "Sun 06:$FMIN:00"
 
 # Off-peak fill: author the next unfilled role (self-seeding), ONCE per night.
 # Deliberately throttled to a single deep-off-peak run per domain (03:FMIN) to
@@ -173,5 +181,5 @@ if [[ "$DRY_RUN" -eq 0 ]]; then
     systemctl --user disable --now "$base" 2>/dev/null || true
     rm -f "$t"
   done
-  log "Installed $DOMAIN timers (${#ROLES[@]} research + ${#ROLES[@]} generate + ${#ROLES[@]} review + 1 daily + 1 fill + 1 backfill + 1 markers)."
+  log "Installed $DOMAIN timers (${#ROLES[@]} research + ${#ROLES[@]} generate + ${#ROLES[@]} review + 1 daily (x4/day) + 1 weekly-audit + 1 fill + 1 backfill + 1 markers)."
 fi

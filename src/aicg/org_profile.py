@@ -128,7 +128,8 @@ def _header(manifest: Any, profile: dict[str, Any]) -> list[str]:
         f"[![Repositories: {total}](https://img.shields.io/badge/repositories-{total}-blue.svg)]"
         f"(https://github.com/orgs/{org}/repositories)\n",
         f"🌐 **Website:** [{site_url(org).removeprefix('https://').rstrip('/')}]({site_url(org)}) · "
-        f"part of the [AI Career Curriculum]({UMBRELLA_SITE})\n",
+        f"part of the [AI Career Curriculum]({UMBRELLA_SITE}) · "
+        f"📊 [Completeness matrix](https://github.com/{org}/.github/blob/main/COMPLETENESS_MATRIX.md)\n",
     ]
 
 

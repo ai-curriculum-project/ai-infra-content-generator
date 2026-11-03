@@ -48,6 +48,7 @@ def test_learning_audit_clean_when_complete(tmp_path: Path) -> None:
         module / "README.md",
         "# Mod 001\n\n" + "Content " * 50 + "\n",
     )
+    write_file(module / "01-chapter.md", "# Chapter\n\n" + "Lecture content. " * 1600)
     write_file(module / "exercises" / "exercise-01-foo.md", "# Ex 01\n\n" + "x" * 300)
     report = audit_learning_repo(repo)
     assert report["summary"]["error_count"] == 0
@@ -57,6 +58,9 @@ def test_learning_audit_detects_placeholder_module(tmp_path: Path) -> None:
     repo = tmp_path / "ai-infra-engineer-learning"
     module = repo / "modules" / "mod-001"
     write_file(module / "README.md", "TODO\nTBD\n")
+    # Written chapters, so this is a complete module with a placeholder README
+    # (a skeleton module is reported as one thin_module gap instead).
+    write_file(module / "01-chapter.md", "# Chapter\n\n" + "Lecture content. " * 1600)
     write_file(module / "exercises" / "exercise-01.md", "# Ex 01\n" + "x" * 300)
     report = audit_learning_repo(repo)
     types = [g["type"] for g in report["gaps"]]

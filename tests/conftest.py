@@ -32,6 +32,12 @@ def make_security_workspace(tmp_path: Path) -> Path:
         learning / "lessons" / "mod-001-ml-security-foundations" / "README.md",
         "# Module 01\n",
     )
+    # A written lecture chapter, so the module reads as authored rather than a
+    # skeleton (see aicg.depth.MIN_MODULE_WORDS).
+    write_file(
+        learning / "lessons" / "mod-001-ml-security-foundations" / "01-foundations.md",
+        "# Foundations\n\n" + "Threats, assets, and trust boundaries in ML systems. " * 450,
+    )
     write_file(solutions / "modules" / "README.md", "# Modules\n")
     write_file(solutions / ".github" / "workflows" / "ci.yml", "name: CI\n")
     return workspace

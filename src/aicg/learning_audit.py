@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
+from .depth import MIN_MODULE_WORDS, learning_module_depth
 from .state import utc_now, write_json
 
 LEARNING_AUDIT_REPORT = "learning-audit-report.json"
@@ -164,6 +165,23 @@ def _audit_module_container(repo_path: Path, container: Path) -> list[LearningGa
 
 def _audit_module(repo_path: Path, module_dir: Path) -> list[LearningGap]:
     rel = module_dir.relative_to(repo_path)
+    depth = learning_module_depth(module_dir)
+    if depth.status != "complete" and (module_dir / "README.md").exists():
+        # A skeleton: every file exists but the module was never written. One
+        # module-level item covers it (no per-file placeholder duplicates).
+        return [
+            LearningGap(
+                repo=repo_path.name,
+                severity="error",
+                type="thin_module",
+                path=f"{rel}/README.md",
+                message=(
+                    f"Module {module_dir.name} is a skeleton ({depth.words} words, "
+                    f"{depth.chapters} chapters, {depth.exercises} exercises); author the "
+                    f"full module (at least {MIN_MODULE_WORDS} words)."
+                ),
+            )
+        ]
     gaps: list[LearningGap] = []
 
     # Required files.

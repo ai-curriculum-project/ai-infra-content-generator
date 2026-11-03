@@ -243,3 +243,4 @@ def test_profile_links_org_site_and_umbrella(tmp_path):
     assert "https://ml-engineering-curriculum.github.io/" in text
     assert "https://ai-curriculum-project.github.io/" in text
     assert "([site](https://ai-infra-curriculum.github.io/))" in text
+    assert "https://github.com/ml-engineering-curriculum/.github/blob/main/COMPLETENESS_MATRIX.md" in text
