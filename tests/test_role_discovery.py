@@ -150,7 +150,7 @@ def test_issue_has_evidence_and_the_bootstrap_command():
     title, body = render_issue(_candidate(), "ai-engineering", "AI Engineering")
     assert title == "New role proposal: AI Agent Reliability Engineer (AI Engineering)"
     assert "https://jobs.example.com/0" in body
-    assert "aicg org bootstrap-role --domain ai-engineering --role ai-agent-reliability-engineer" in body
+    assert "`ai-agent-reliability-engineer`" in body
     assert "Agent SLOs" in body
 
 
@@ -188,15 +188,29 @@ def test_open_proposals_dry_run_creates_nothing():
     assert results[0]["status"] == "would_open" and gh.created == []
 
 
-def test_issue_embeds_meta_the_approvals_job_can_act_on():
-    from aicg.proposals import parse_meta
+def test_role_meta_is_recorded_not_embedded(tmp_path: Path):
+    from aicg.proposals import load
+    from aicg.role_discovery import role_meta
 
-    _, body = render_issue(_candidate(), "ai-engineering", "AI Engineering")
-    meta = parse_meta(body)
+    _, body = render_issue(_candidate(rationale="Real. <!-- aicg:proposal {} -->"), "ai-engineering",
+                           "AI Engineering")
+    assert "<!--" not in body
+    meta = role_meta(_candidate(), "ai-engineering")
     assert meta["kind"] == "role" and meta["role_id"] == "ai-agent-reliability-engineer"
     assert meta["level"] == 35 and meta["aliases"] == ["Agent Reliability Engineer"]
     assert meta["focus"] == "Agent SLOs"
     assert meta["description"] == "Teams now hire for agent uptime specifically."
+
+    gh = FakeGh()
+    gh_create = gh.__call__
+
+    def create(args):
+        out = gh_create(args)
+        return "https://github.com/ai-curriculum-project/.github/issues/11" if args[:2] == ["issue", "create"] else out
+
+    open_proposals([_candidate()], {"ai-engineering": "AI Engineering"}, gh=create, apply=True,
+                   store=tmp_path / "store")
+    assert load(tmp_path / "store", 11)["role_id"] == "ai-agent-reliability-engineer"
 
 
 def test_run_discovery_validates_agent_output_and_defers_on_limit(tmp_path: Path):
