@@ -114,8 +114,10 @@ def family(tmp_path: Path) -> dict:
 
 
 def test_real_stances_file_is_valid():
+    from aicg.domains import list_domains
+
     stances = load_stances(REPO_ROOT / "config" / "stances.json")
-    assert set(stances["domains"]) == set(DOMAINS)
+    assert set(stances["domains"]) == set(list_domains(REPO_ROOT))
 
 
 def test_load_stances_rejects_missing_handoff(tmp_path: Path):
@@ -307,3 +309,8 @@ def test_load_stances_rejects_unknown_counterpart_domain(tmp_path: Path):
     path.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(StanceError, match="nope"):
         load_stances(path)
+
+
+def test_family_heading_counts_orgs(family):
+    readme = render_orientation("infra", "ai-infra", family, _stances())["README.md"]
+    assert "## The five relationships" in readme

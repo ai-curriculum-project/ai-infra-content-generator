@@ -25,14 +25,12 @@ CLOSE = "<!-- /aicg:site-banner -->"
 
 # Unified ecosystem banner. Establishes the five-org federation. (The cohort
 # line was removed 2026-11-02 when the cohort program was canceled.)
-BANNER_BODY = (
-    "> 🎓 Part of the free, open-source **AI Career Curriculum** ecosystem — "
-    "[Infrastructure](https://github.com/ai-infra-curriculum) · "
-    "[ML Engineering](https://github.com/ml-engineering-curriculum) · "
-    "[AI Engineering](https://github.com/ai-engineering-curriculum) · "
-    "[Governance](https://github.com/ai-governance-curriculum) · "
-    "[Startup](https://github.com/ai-startup-curriculum)."
-)
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+from aicg.domain_provision import ecosystem_banner_body  # noqa: E402
+
+BANNER_BODY = ecosystem_banner_body()
 BLOCK = f"{OPEN}\n{BANNER_BODY}\n{CLOSE}"
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

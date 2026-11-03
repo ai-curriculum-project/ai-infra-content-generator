@@ -1,0 +1,42 @@
+{
+  "tagline": "A hands-on, role-based curriculum for professionals who work alongside AI: directing models and agents, checking their output, and redesigning the work around them.",
+  "overview": "This org covers **AI in everyday professional work**: *working alongside* the models. It's for engineers, analysts, product managers, and managers whose job isn't building AI but whose work now runs through it: delegating to coding agents and assistants, briefing them well, verifying what comes back, and building team habits that make AI-assisted work fast and safe. Every role track has a paired **learning** repository (modules, lecture chapters, exercises, quizzes) and a **solutions** repository with reference walkthroughs.",
+  "highlights": [
+    "🧭 **Judgment over tooling:** delegation, briefing, verification, and accountability, the skills that outlast any one tool",
+    "🛠️ Hands-on with real coding agents, assistants, and analysis tools, with every exercise graded on the quality of the *result*"
+  ],
+  "bands": [
+    {
+      "title": "🟢 Practitioner (L20)",
+      "min_level": 0,
+      "max_level": 29
+    },
+    {
+      "title": "🔵 Product & Delivery (L30)",
+      "min_level": 30,
+      "max_level": 39
+    },
+    {
+      "title": "⭐ Leadership (L40+)",
+      "min_level": 40,
+      "max_level": 99
+    }
+  ],
+  "focus": {
+    "ai-assisted-software-engineer": "Delegating to coding agents, writing specs & context, reviewing AI-written code, testing as verification, repo harnesses",
+    "ai-augmented-analyst": "AI-assisted analysis & SQL, checking generated numbers, notebook agents, reproducibility, communicating uncertainty",
+    "ai-augmented-product-manager": "AI in discovery & specs, prototyping with agents, judging AI output quality, PRDs as context, shipping faster safely",
+    "ai-augmented-team-manager": "Redesigning team workflows, review norms for AI-made work, measuring real productivity, skills & career growth",
+    "ai-enablement-lead": "Org-wide AI adoption: tool selection, usage policy, training programs, champions networks, measuring impact"
+  },
+  "quick_start_role": "ai-assisted-software-engineer",
+  "technologies": {
+    "Coding agents": "Claude Code, Codex CLI, Cursor, GitHub Copilot",
+    "Assistants": "Claude, ChatGPT, Gemini, Microsoft Copilot",
+    "Analysis": "Jupyter, SQL, spreadsheets with AI assistance",
+    "Context & tooling": "CLAUDE.md / AGENTS.md, Model Context Protocol (MCP), skills & hooks",
+    "Governance": "Acceptable-use policies, NIST AI RMF, data-handling rules"
+  },
+  "discussions": false,
+  "career_progression": false
+}

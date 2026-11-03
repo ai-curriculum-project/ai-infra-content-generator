@@ -1,6 +1,7 @@
 {
   "_comment": "Editorial input for `aicg org render-orientation` (the per-role 'Your Relationship to the Model' orientation module). One stance per domain: the verb that defines the org relative to the model, what it owns, what it does not, and what it hands each sibling org. Facts about roles (titles, levels, repos) come from the manifests, not from here. A domain with path_levels=true uses levels as reading order, not seniority: roles in it are paired with the most senior role of each sibling, and siblings are paired with its counterpart_for[<sibling>] role.",
   "order": [
+    "ai-workforce",
     "ai-startup",
     "ai-governance",
     "ai-engineering",
@@ -8,14 +9,15 @@
     "ai-infra"
   ],
   "scenario": {
-    "title": "One model upgrade, five orgs",
-    "intro": "Your vendor ships a new model version and deprecates the one in production in 90 days. Nobody owns this end to end. Here is how the work splits:",
+    "title": "One model upgrade, six orgs",
+    "intro": "Your vendor ships a new model version and deprecates the one in production in 90 days. Nobody owns this end to end. Here is how the work splits across the six orgs:",
     "steps": {
       "ai-startup": "Decides whether the upgrade is worth it now: cost, customer commitments, roadmap. Tells customers what changes and when.",
       "ai-governance": "Re-runs risk and safety evaluations on the new version, updates the model inventory and documentation, and signs off (or blocks) the release.",
       "ai-engineering": "Re-runs product evals, re-tunes prompts and tool definitions that regressed, and rolls the new model out behind a flag with a rollback path.",
       "ml-engineering": "Re-validates any fine-tunes, distillations, or in-house models that depended on the old version, and benchmarks the new one on the team's own data.",
-      "ai-infra": "Stands up serving for the new version, capacity-plans GPUs or rate limits, shifts traffic gradually, and watches latency, error, and cost dashboards."
+      "ai-infra": "Stands up serving for the new version, capacity-plans GPUs or rate limits, shifts traffic gradually, and watches latency, error, and cost dashboards.",
+      "ai-workforce": "Re-checks the everyday workflows built on the old model (prompts, review habits, team playbooks), spots where output quality shifted, and updates the guidance people actually follow."
     },
     "close": "If any one of these is skipped, the upgrade fails in a way the others can't see from where they sit. Knowing which line is yours, and who owns the lines next to it, is the point of this module."
   },
@@ -36,7 +38,8 @@
         "ml-engineering": "Training and fine-tuning clusters, experiment and artifact storage, and a path to production for the models they produce",
         "ai-engineering": "Serving endpoints with known latency, throughput, rate limits, and cost per call, plus the telemetry to debug them",
         "ai-governance": "Audit logs, access controls, data-residency guarantees, and evidence that controls actually run in production",
-        "ai-startup": "Unit economics: what each request, user, or customer costs to serve, and how that changes with scale"
+        "ai-startup": "Unit economics: what each request, user, or customer costs to serve, and how that changes with scale",
+        "ai-workforce": "Reliable, fast, well-documented AI tools with clear limits, so a working day doesn't stall on an outage or a rate limit"
       }
     },
     "ml-engineering": {
@@ -55,7 +58,8 @@
         "ai-infra": "Model artifacts with known resource profiles (memory, throughput, precision) and the training workloads they need to schedule",
         "ai-engineering": "Models, fine-tunes, and embeddings with documented strengths, failure modes, and benchmark results on relevant tasks",
         "ai-governance": "Data provenance, model cards, training-data documentation, and evaluation results they can audit",
-        "ai-startup": "An honest read on what's technically feasible, how long it takes, and what it costs to own a model versus renting one"
+        "ai-startup": "An honest read on what's technically feasible, how long it takes, and what it costs to own a model versus renting one",
+        "ai-workforce": "Models that are better at real work, plus honest documentation of what they're bad at"
       }
     },
     "ai-engineering": {
@@ -74,7 +78,8 @@
         "ai-infra": "Traffic shapes, latency budgets, and model-mix requirements, so capacity and routing match how the product actually calls models",
         "ml-engineering": "Real failure cases and task data from production, which tell them where a fine-tune or a different model would actually help",
         "ai-governance": "System descriptions, eval results, and guardrail designs for each AI feature, plus incident reports when something goes wrong",
-        "ai-startup": "Working features, honest demos, and a clear picture of what the product can promise customers today"
+        "ai-startup": "Working features, honest demos, and a clear picture of what the product can promise customers today",
+        "ai-workforce": "Tools, agents, and integrations that fit how people actually work, with sensible defaults and guardrails"
       }
     },
     "ai-governance": {
@@ -93,7 +98,8 @@
         "ai-infra": "Control requirements (logging, access, retention, residency) and the evidence they need to produce",
         "ml-engineering": "Data-use rules, documentation standards, and the risk-based evaluation bar a model must clear",
         "ai-engineering": "Risk tiers, guardrail requirements, and red-team findings to fix before (and after) launch",
-        "ai-startup": "A defensible position for customers, regulators, and investors, and early warning on uses that would sink the company"
+        "ai-startup": "A defensible position for customers, regulators, and investors, and early warning on uses that would sink the company",
+        "ai-workforce": "Clear rules on what may be shared with which tools, and which uses need review, written so people can follow them"
       }
     },
     "ai-startup": {
@@ -112,14 +118,36 @@
         "ai-infra": "Growth forecasts, cost targets, and reliability commitments that set the platform's budget",
         "ml-engineering": "The problems worth owning a model for, and the business case for the data and compute it takes",
         "ai-engineering": "Prioritized customer problems, what's been promised, and what 'good enough to ship' means for this market",
-        "ai-governance": "The company's risk appetite, target markets, and customer commitments that set the compliance bar"
+        "ai-governance": "The company's risk appetite, target markets, and customer commitments that set the compliance bar",
+        "ai-workforce": "Decisions about which AI tools the company adopts and how roles change, plus the training and time to adapt"
       },
       "path_levels": true,
       "counterpart_for": {
         "ai-infra": "cto",
         "ml-engineering": "cto",
         "ai-engineering": "cpo",
-        "ai-governance": "startup-operations-governance"
+        "ai-governance": "startup-operations-governance",
+        "ai-workforce": "startup-operations-governance"
+      }
+    },
+    "ai-workforce": {
+      "verb": "work alongside",
+      "headline": "You **work alongside** the model: you direct it, check its output, and redesign your own work around it.",
+      "stance": "To you the model is a colleague with uneven skills: fast, tireless, often right, sometimes confidently wrong. You don't build or run it. You decide what to hand it, how to brief it, how to verify what comes back, and which parts of the job stay yours. Your craft is the judgment around the model, not the model itself.",
+      "owns": [
+        "Which tasks to delegate to models and agents, and which to keep",
+        "Briefing: the context, constraints, and examples that get usable output",
+        "Verification: reviewing, testing, and fact-checking what the model produces",
+        "Workflows and team habits that make AI-assisted work repeatable and safe",
+        "Accountability for the result, whoever (or whatever) drafted it"
+      ],
+      "not_owns": "The model, the tools built on it, or the policy that governs them. You're their most demanding user: you report where they fail real work and push for the fixes.",
+      "hands_to": {
+        "ai-infra": "Real usage patterns and pain points (latency, limits, outages) from people whose day depends on the tools",
+        "ml-engineering": "Concrete examples of where model quality falls short on real tasks, the raw material for better evals and training data",
+        "ai-engineering": "Workflow requirements and failure reports from daily use, which tell builders what to fix and what to build next",
+        "ai-governance": "How AI is actually being used on the ground, including the shadow uses policy hasn't caught up with",
+        "ai-startup": "Evidence of where AI changes the economics of a job, which is where the product and hiring bets are"
       }
     }
   }

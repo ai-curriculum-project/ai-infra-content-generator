@@ -27,14 +27,12 @@ CLOSE = "<!-- /aicg:site-banner -->"
 # unified banner across ALL FOUR curriculum orgs via the GitHub API. This
 # single-org local-clone script is kept for offline use; BANNER_BODY mirrors
 # the unified ecosystem banner so the two converge.
-BANNER_BODY = (
-    "> 🎓 Part of the free, open-source **AI Career Curriculum** ecosystem — "
-    "[Infrastructure](https://github.com/ai-infra-curriculum) · "
-    "[ML Engineering](https://github.com/ml-engineering-curriculum) · "
-    "[AI Engineering](https://github.com/ai-engineering-curriculum) · "
-    "[Governance](https://github.com/ai-governance-curriculum) · "
-    "[Startup](https://github.com/ai-startup-curriculum)."
-)
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+from aicg.domain_provision import ecosystem_banner_body  # noqa: E402
+
+BANNER_BODY = ecosystem_banner_body()
 BLOCK = f"{OPEN}\n{BANNER_BODY}\n{CLOSE}"
 
 # Public repos to touch (local dir names). The site repo itself is excluded.

@@ -29,6 +29,7 @@ DOMAIN_TOPICS = {
     "ai-engineering-curriculum": ["ai-engineering", "llm", "ai-agents", "generative-ai", "rag", "prompt-engineering"],
     "ai-governance-curriculum": ["ai-governance", "responsible-ai", "ai-safety", "ai-security", "ai-risk", "ai-compliance"],
     "ai-startup-curriculum": ["startup", "entrepreneurship", "founders", "fundraising", "venture-capital", "product-management"],
+    "ai-workforce-curriculum": ["ai-assisted-development", "ai-productivity", "future-of-work", "ai-adoption", "coding-agents", "ai-literacy"],
 }
 
 

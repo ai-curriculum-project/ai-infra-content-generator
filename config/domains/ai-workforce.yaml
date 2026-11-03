@@ -1,0 +1,195 @@
+{
+  "org": "ai-workforce-curriculum",
+  "default_remote": "git@github.com:ai-workforce-curriculum/{repo}.git",
+  "release": {
+    "tag_format": "v%Y.%m",
+    "branch": "main",
+    "package_workflow": "release-package.yml"
+  },
+  "quality_judge": {
+    "enabled": true,
+    "flag_only": true,
+    "agent_command": "{runner}/scripts/run-claude-judge.sh --prompt {prompt} --output-dir {output_dir} --repo {repo} --work-id {work_id} --artifact {artifact}",
+    "thresholds": {
+      "default": 70,
+      "freshness": 72
+    },
+    "dimensions": [
+      "correctness",
+      "clarity",
+      "source_quality",
+      "depth"
+    ],
+    "timeout_seconds": 300,
+    "freshness_cooldown_days": 90
+  },
+  "pipeline": {
+    "phases": {
+      "author": true,
+      "reaudit_autofix": false,
+      "research_autopromote": false,
+      "retire": false,
+      "package": false
+    },
+    "daily_budget": 8,
+    "rotation_days": 90,
+    "reaudit_slice": 30
+  },
+  "extra_repos": [
+    {
+      "name": ".github",
+      "kind": "org-profile",
+      "release": false
+    }
+  ],
+  "maintained_by": {
+    "_comment": "Project maintainership attribution. Used by aicg org rebrand to write the footer, and by the audits to treat references to these orgs as legitimate (not 'orphan'). Distinct from the source policy for curriculum content — those rules are unchanged.",
+    "name": "VeriSwarm.ai",
+    "url": "https://veriswarm.ai",
+    "phrasing": "Maintained by [VeriSwarm.ai](https://veriswarm.ai)",
+    "footer_marker": "<!-- aicg:maintained-by -->"
+  },
+  "documentation": {
+    "format_guard_files": [
+      "CURRICULUM.md",
+      "CURRICULUM_INDEX.md",
+      "README.md",
+      "VERSIONS.md"
+    ],
+    "org_readme_repo": ".github",
+    "org_readme_files": [
+      "README.md",
+      "profile/README.md"
+    ]
+  },
+  "schedules": {
+    "monthly_release": "0 2 1 * *",
+    "monthly_research": "30 5 1 3,6,9,12 *",
+    "weekly_audit": "0 3 * * 0",
+    "daily_remediate": "0 * * * *",
+    "daily_issues": "20 4 * * *",
+    "daily_steward": "40 4 * * *",
+    "daily_discussions": "0 5 * * *",
+    "monthly_review": "0 6 1 3,6,9,12 *"
+  },
+  "automation": {
+    "state_dir": ".aicg/org",
+    "lock_name": "aicg-org.lock",
+    "auto_merge": false,
+    "max_daily_work_items": 1,
+    "_comment_daily_drain": "True = drain queue per tick until empty / wall-clock cap; False = exactly one item per tick.",
+    "daily_drain": false,
+    "agent": {
+      "provider": "openai",
+      "model": "codex-gpt-5.5",
+      "interface": "local_cli_subscription",
+      "agent_command": "{runner}/scripts/run-codex-control.sh --model codex-gpt-5.5 --prompt {prompt} --output-dir {output_dir} --repo {repo} --work-id {work_id}",
+      "purpose": "repo orchestration, audits, validation, PR/issue/discussion stewardship, and scheduler control"
+    }
+  },
+  "content_generation": {
+    "agent": {
+      "provider": "anthropic",
+      "model": "claude-opus-4-7",
+      "interface": "local_cli_subscription",
+      "purpose": "curriculum, solution, job-requirement, and supplemental content generation",
+      "agent_command": "{runner}/scripts/run-claude-content.sh --model claude-opus-4-7 --prompt {prompt} --output-dir {output_dir} --repo {repo} --work-id {work_id}"
+    }
+  },
+  "job_requirements": {
+    "ownership_strategy": "lowest_level_role",
+    "markdown_file": "JOB_REQUIREMENTS.md",
+    "structured_file": ".aicg/job-requirements.json",
+    "supplemental_dir": "supplemental"
+  },
+  "research": {
+    "agent": {
+      "provider": "anthropic",
+      "model": "claude-opus-4-7",
+      "interface": "local_cli_subscription",
+      "purpose": "quarterly job-market research with web tools enabled",
+      "agent_command": "{runner}/scripts/run-claude-research.sh --model claude-opus-4-7 --prompt {prompt} --output-dir {output_dir} --repo {repo} --work-id {work_id}"
+    },
+    "minimum_postings_per_role": 25,
+    "source_window_days": 90,
+    "caps": {
+      "_comment": "Per role, per research run. Anything above the cap is rejected with a 'cap_exceeded' reason and surfaced in the proposal PR so a human can decide whether to raise the cap or trim the list.",
+      "max_modules_per_run": 1,
+      "max_exercises_per_run": 3,
+      "max_projects_per_run": 0
+    },
+    "min_evidence_count": 3,
+    "min_evidence_window_days": 90
+  },
+  "roles": [
+    {
+      "id": "ai-assisted-software-engineer",
+      "title": "AI-Assisted Software Engineer",
+      "level": 20,
+      "learning_repo": "ai-assisted-software-engineer-learning",
+      "solution_repo": "ai-assisted-software-engineer-solutions",
+      "aliases": [
+        "AI-Native Software Engineer",
+        "Software Engineer - AI-Assisted Development",
+        "Agentic Software Engineer",
+        "Software Engineer (Coding Agents)",
+        "AI-First Software Engineer"
+      ]
+    },
+    {
+      "id": "ai-augmented-analyst",
+      "title": "AI-Augmented Data Analyst",
+      "level": 20,
+      "learning_repo": "ai-augmented-analyst-learning",
+      "solution_repo": "ai-augmented-analyst-solutions",
+      "aliases": [
+        "AI-Powered Data Analyst",
+        "Data Analyst - Generative AI",
+        "AI-First Analyst",
+        "Analytics Engineer - AI Tools",
+        "Business Analyst - AI"
+      ]
+    },
+    {
+      "id": "ai-augmented-product-manager",
+      "title": "AI-Augmented Product Manager",
+      "level": 30,
+      "learning_repo": "ai-augmented-product-manager-learning",
+      "solution_repo": "ai-augmented-product-manager-solutions",
+      "aliases": [
+        "AI-First Product Manager",
+        "AI-Native Product Manager",
+        "Product Manager - AI-Augmented Workflows",
+        "Technical Product Manager - AI Tools"
+      ]
+    },
+    {
+      "id": "ai-augmented-team-manager",
+      "title": "AI-Augmented Team Manager",
+      "level": 40,
+      "learning_repo": "ai-augmented-team-manager-learning",
+      "solution_repo": "ai-augmented-team-manager-solutions",
+      "aliases": [
+        "AI-First Engineering Manager",
+        "Engineering Manager - AI Transformation",
+        "Manager, AI-Augmented Teams",
+        "Team Lead - AI Adoption"
+      ]
+    },
+    {
+      "id": "ai-enablement-lead",
+      "title": "AI Enablement Lead",
+      "level": 45,
+      "learning_repo": "ai-enablement-lead-learning",
+      "solution_repo": "ai-enablement-lead-solutions",
+      "aliases": [
+        "AI Adoption Lead",
+        "AI Transformation Lead",
+        "Head of AI Enablement",
+        "AI Productivity Lead",
+        "AI Champion Program Lead",
+        "Director of AI Enablement"
+      ]
+    }
+  ]
+}
