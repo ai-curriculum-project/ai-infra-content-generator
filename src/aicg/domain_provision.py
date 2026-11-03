@@ -41,6 +41,15 @@ ECOSYSTEM = [
 ]
 
 
+PARENT_ORG = "ai-curriculum-project"
+UMBRELLA_SITE = f"https://{PARENT_ORG}.github.io/"
+
+
+def site_url(org: str) -> str:
+    """Each org's GitHub Pages site (built by the umbrella site repo)."""
+    return f"https://{org.lower()}.github.io/"
+
+
 def ecosystem_banner_body() -> str:
     """The one-line ecosystem banner shown at the top of every repo README."""
     links = " · ".join(f"[{s.short}](https://github.com/{s.org})" for s in ECOSYSTEM)

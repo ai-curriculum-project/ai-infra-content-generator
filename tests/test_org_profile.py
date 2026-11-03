@@ -236,3 +236,10 @@ def test_role_missing_from_explicit_bands_is_an_error(tmp_path: Path) -> None:
     profile = _profile(bands=[{"title": "Only some", "roles": ["mle", "ft"]}])
     with pytest.raises(ProfileError, match="staff"):
         render_rich_profile(_manifest(tmp_path), profile)
+
+
+def test_profile_links_org_site_and_umbrella(tmp_path):
+    text = render_rich_profile(_manifest(tmp_path), _profile())
+    assert "https://ml-engineering-curriculum.github.io/" in text
+    assert "https://ai-curriculum-project.github.io/" in text
+    assert "([site](https://ai-infra-curriculum.github.io/))" in text
