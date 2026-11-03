@@ -173,7 +173,8 @@ install_cron() {
 20 4 * * * $(job_command daily-issues)
 40 4 * * * $(job_command daily-steward)
 5 5 * * * $(job_command daily-discussions)
-35 5 * * * $(job_command resolve-markers)${per_role_lines}
+35 5 * * * $(job_command resolve-markers)
+5 3 * * * $(job_command fill-next)${per_role_lines}
 $marker_end"
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -436,6 +437,11 @@ install_systemd() {
   write_systemd_pair "$unit_dir" "fleet-digest" "fleet-digest" "*-*-* 09:05:00"
   # needs-research resolution for the ai-infra org (05:35, off minute 0).
   write_systemd_pair "$unit_dir" "resolve-markers" "resolve-markers" "*-*-* 05:35:00"
+  # Daily initial-fill: author the next ai-infra role with no modules yet
+  # (self-seeding generate-role). No-op once every role has content, so a
+  # role added via bootstrap-role gets authored without a manual kickoff.
+  # 03:05 matches the sibling domains' 03:<offset> fill slot at offset 0.
+  write_systemd_pair "$unit_dir" "fill-next" "fill-next" "*-*-* 03:05:00"
 
   install_per_role_research "$unit_dir"
   install_per_role_review "$unit_dir"
@@ -458,7 +464,8 @@ install_systemd() {
       aicg-daily-issues.timer \
       aicg-daily-steward.timer \
       aicg-daily-discussions.timer \
-      aicg-fleet-digest.timer
+      aicg-fleet-digest.timer \
+      aicg-fill-next.timer
     local slug
     for slug in "${PER_ROLE_SLUGS[@]}"; do
       systemctl --user enable --now "aicg-research-role@${slug}.timer"
