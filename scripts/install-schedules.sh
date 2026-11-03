@@ -177,7 +177,8 @@ install_cron() {
 50 3 * * * $(job_command fill-next)
 5 7 * * 0 $(job_command completeness)
 45 0 28 * * $(job_command discover-roles)
-5 8 * * * $(job_command approvals)${per_role_lines}
+5 8 * * * $(job_command approvals)
+35 8 * * 0 $(job_command publish)${per_role_lines}
 $marker_end"
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -453,6 +454,9 @@ install_systemd() {
   # Daily approval loop for every domain: act on `approved` proposal issues,
   # announce new ones. 08:05, off the hourly remediate minute.
   write_systemd_pair "$unit_dir" "approvals" "approvals" "*-*-* 08:05:00"
+  # Weekly regenerate-and-push of profiles, Module 00, and all Pages sites
+  # (after Sun 07:05 completeness; approvals also triggers it for new roles).
+  write_systemd_pair "$unit_dir" "publish" "publish" "Sun 08:35:00"
 
   install_per_role_research "$unit_dir"
   install_per_role_review "$unit_dir"
@@ -479,7 +483,8 @@ install_systemd() {
       aicg-fill-next.timer \
       aicg-completeness.timer \
       aicg-discover-roles.timer \
-      aicg-approvals.timer
+      aicg-approvals.timer \
+      aicg-publish.timer
     local slug
     for slug in "${PER_ROLE_SLUGS[@]}"; do
       systemctl --user enable --now "aicg-research-role@${slug}.timer"

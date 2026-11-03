@@ -504,6 +504,13 @@ def build_parser() -> argparse.ArgumentParser:
     org_approvals.add_argument("--apply", action="store_true", help="Do the work (default: show the plan).")
     org_approvals.set_defaults(func=cmd_org_approvals)
 
+    org_publish = org_subparsers.add_parser(
+        "publish-profiles",
+        help="Re-render every org's profile page into its .github checkout (changed files only)",
+    )
+    add_org_args(org_publish)
+    org_publish.set_defaults(func=cmd_org_publish_profiles)
+
     org_bootstrap_prompt = org_subparsers.add_parser(
         "bootstrap-prompt",
         help="(Re)write a role's research+plan prompt packet (no scaffold) for seeding",
@@ -1708,6 +1715,16 @@ def cmd_org_approvals(args: argparse.Namespace) -> int:
             print(f"NEW PROPOSAL: {issue['title']} {issue['url']}")
         seen_path.parent.mkdir(parents=True, exist_ok=True)
         seen_path.write_text(_json.dumps(sorted(seen | {i["number"] for i in fresh})))
+    return 0
+
+
+def cmd_org_publish_profiles(args: argparse.Namespace) -> int:
+    from .domains import _runner_root
+    from .publish import publish_profiles
+
+    for path in publish_profiles(_all_domain_manifests(), _runner_root() / "config" / "profiles",
+                                 resolve_workspace(args)):
+        print(f"wrote {path}")
     return 0
 
 

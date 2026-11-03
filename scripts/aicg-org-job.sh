@@ -653,6 +653,67 @@ if files and all(ok.fullmatch(f) for f in files) and re.fullmatch(r'[0-9a-f]{40}
         notify_ntfy "AICG approval: $line" "gear" "default" "$line"
       done < <(printf '%s\n' "$OUT" | grep -E '^issue #[0-9]+: (applied|failed)' || true)
       ;;
+    publish)
+      # Weekly, and right after an approved new role: regenerate every page that
+      # derives from config and push what changed. No Claude calls.
+      #   1. org profile pages (<org>-dotgithub/profile/README.md)
+      #   2. Module 00 in every learning repo (+ CURRICULUM.md "Start here")
+      #   3. the umbrella site and each org's <org>.github.io site
+      SITE_DIR="$WORKSPACE/ai-curriculum-project.github.io"
+      if [[ ! -d "$SITE_DIR/.git" ]]; then
+        git clone -q https://github.com/ai-curriculum-project/ai-curriculum-project.github.io.git "$SITE_DIR" \
+          || die "could not clone the site repo"
+      fi
+      git -C "$SITE_DIR" pull -q --ff-only || log "site repo pull failed; continuing"
+      for dom in $("$AICG_BIN" org list-domains 2>/dev/null | awk '/✓/ {print $1}'); do
+        "$AICG_BIN" org sync --workspace "$WORKSPACE" --domain "$dom" >/dev/null 2>&1 \
+          || log "sync failed for $dom"
+      done
+      # Repos with local changes before we render are left alone, so nothing
+      # unrelated gets committed alongside the generated pages.
+      DIRTY_BEFORE=" "
+      for repo_dir in "$WORKSPACE"/*/; do
+        repo_dir="${repo_dir%/}"
+        [[ -d "$repo_dir/.git" ]] || continue
+        if git -C "$repo_dir" status --porcelain -- . ':(exclude).aicg' | grep -q .; then
+          DIRTY_BEFORE+="$(basename "$repo_dir") "
+        fi
+      done
+      "$AICG_BIN" org publish-profiles --workspace "$WORKSPACE" | tail -n 20 || log "publish-profiles failed"
+      "$AICG_BIN" org render-orientation --workspace "$WORKSPACE" --all-domains >/dev/null \
+        || log "render-orientation failed"
+      PUBLISHED=0
+      for repo_dir in "$WORKSPACE"/*/; do
+        repo_dir="${repo_dir%/}"; name="$(basename "$repo_dir")"
+        [[ -d "$repo_dir/.git" ]] || continue
+        [[ "$DIRTY_BEFORE" == *" $name "* ]] && continue
+        paths=()
+        for p in profile/README.md CURRICULUM.md lessons/00-your-relationship-to-the-model \
+                 modules/00-your-relationship-to-the-model; do
+          [[ -e "$repo_dir/$p" ]] && paths+=("$p")
+        done
+        [[ ${#paths[@]} -gt 0 ]] || continue
+        git -C "$repo_dir" add -- "${paths[@]}"
+        git -C "$repo_dir" diff --cached --quiet && continue
+        git -C "$repo_dir" commit -q -m "docs: refresh generated pages (aicg publish)"
+        if git -C "$repo_dir" push -q origin HEAD; then
+          PUBLISHED=$((PUBLISHED + 1))
+        else
+          log "push failed: $name"
+        fi
+      done
+      log "publish: updated $PUBLISHED repos (profiles + Module 00)"
+      if ( cd "$SITE_DIR" && python3 scripts/export-data.py && python3 build.py ) >/dev/null; then
+        git -C "$SITE_DIR" add -- index.html data/curricula.json
+        if ! git -C "$SITE_DIR" diff --cached --quiet; then
+          git -C "$SITE_DIR" commit -q -m "data: refresh from the curriculum manifests (aicg publish)"
+          git -C "$SITE_DIR" push -q origin HEAD || log "umbrella site push failed"
+        fi
+        bash "$SITE_DIR/scripts/publish-org-sites.sh" | grep -v "unchanged" || true
+      else
+        log "site build failed; sites left as they were"
+      fi
+      ;;
     fleet-digest)
       # Project-wide daily observability: one ntfy push summarizing fill
       # progress across all domains (N/total roles authored, mode, BAR).

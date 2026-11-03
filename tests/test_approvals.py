@@ -143,7 +143,7 @@ def test_content_plan_verifies_merges_stages_promotes_then_authors(tmp_path: Pat
     labels = [a.label for a in actions]
     assert labels[0] == "verify the proposal PR" and labels[1] == "merge the proposal PR"
     assert labels.index("stage the approved plan change") < labels.index("apply to the curriculum plan")
-    assert actions[-1].argv[:2] == ["systemd-run", "--user"] and "generate-role" in actions[-1].argv
+    assert actions[-1].argv[:2] == ["systemd-run", "--user"] and "generate-role" in actions[-1].argv[-1]
     stage = next(a for a in actions if a.label == "stage the approved plan change")
     stage.python()
     staged = tmp_path / "rag-engineer-learning" / ".aicg" / "curriculum-plan-delta-filtered.json"
@@ -166,7 +166,9 @@ def test_role_plan_bootstraps_configures_merges_and_authors(tmp_path: Path):
     boot = next(a for a in argvs if "bootstrap-role" in a)
     assert "--create-remotes" in boot and "agent-sre" in boot
     assert any(a.python for a in actions)
-    assert "generate-role" in argvs[-1]
+    authoring = next(a for a in actions if a.label == "start authoring")
+    assert "generate-role agent-sre" in authoring.argv[-1]
+    assert actions[-1].label == "refresh pages and sites"
 
 
 # --- the loop -------------------------------------------------------------------------
