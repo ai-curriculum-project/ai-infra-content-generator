@@ -14,17 +14,37 @@ CLI layer does the repo creation + pushes.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, NamedTuple
+
 
 # The four-org federation, in value-chain order. Used to render the
 # "Curriculum Family" cross-link block in every org profile.
+class Sibling(NamedTuple):
+    """One org in the AI Career Curriculum family."""
+
+    org: str
+    display: str
+    desc: str
+    short: str  # label used in the cross-repo site banner
+
+
+# The single source of truth for the org family: profile pages, the site
+# banner on every repo, and the orientation module all read this list.
+# Adding an org = one line here (plus its domain config and stance).
 ECOSYSTEM = [
-    ("ai-infra-curriculum", "AI Infrastructure", "*run* the platforms (Kubernetes, GPUs, training infra, serving, MLOps, IaC, SRE)"),
-    ("ml-engineering-curriculum", "ML Engineering", "*build & train* the models (data, fine-tuning, pretraining, RLHF, evals)"),
-    ("ai-engineering-curriculum", "AI Engineering", "*build with* the models (agentic apps, RAG, multi-agent systems)"),
-    ("ai-governance-curriculum", "AI Governance", "*govern & assure* AI (security, compliance, evaluation, safety)"),
-    ("ai-startup-curriculum", "AI Startup", "*turn it into a company* — the startup operating school for technical founders (functional curricula × role pathways × stages)"),
+    Sibling("ai-infra-curriculum", "AI Infrastructure", "*run* the platforms (Kubernetes, GPUs, training infra, serving, MLOps, IaC, SRE)", "Infrastructure"),
+    Sibling("ml-engineering-curriculum", "ML Engineering", "*build & train* the models (data, fine-tuning, pretraining, RLHF, evals)", "ML Engineering"),
+    Sibling("ai-engineering-curriculum", "AI Engineering", "*build with* the models (agentic apps, RAG, multi-agent systems)", "AI Engineering"),
+    Sibling("ai-governance-curriculum", "AI Governance", "*govern & assure* AI (security, compliance, evaluation, safety)", "Governance"),
+    Sibling("ai-startup-curriculum", "AI Startup", "*turn it into a company* — the startup operating school for technical founders (functional curricula × role pathways × stages)", "Startup"),
+    Sibling("ai-workforce-curriculum", "AI Workforce", "*work alongside* the models (AI-assisted engineering, analysis, product, and team leadership)", "Workforce"),
 ]
+
+
+def ecosystem_banner_body() -> str:
+    """The one-line ecosystem banner shown at the top of every repo README."""
+    links = " · ".join(f"[{s.short}](https://github.com/{s.org})" for s in ECOSYSTEM)
+    return f"> 🎓 Part of the free, open-source **AI Career Curriculum** ecosystem — {links}."
 
 
 @dataclass(frozen=True)
@@ -43,6 +63,7 @@ def _org_display(org: str) -> str:
         "ai-engineering": "AI Engineering",
         "ai-governance": "AI Governance",
         "ai-startup": "AI Startup",
+        "ai-workforce": "AI Workforce",
     }
     return special.get(base.lower(), base.replace("-", " ").title())
 
@@ -96,7 +117,7 @@ def render_org_profile(manifest: Any, *, tagline: str | None = None) -> str:
         f"One of {len(ECOSYSTEM)} sibling orgs in the **AI Career Curriculum "
         "ecosystem**, organized by what you *do* relative to a model:\n"
     )
-    for sib_org, sib_disp, sib_desc in ECOSYSTEM:
+    for sib_org, sib_disp, sib_desc, _ in ECOSYSTEM:
         if sib_org == org:
             out.append(f"- **{sib_disp} Curriculum** *(you are here)* — {sib_desc}.")
         else:

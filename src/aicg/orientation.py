@@ -1,6 +1,6 @@
 """Per-role orientation module: "Your Relationship to the Model".
 
-Every role in the five-org family gets the same opening module, rendered for
+Every role in the org family gets the same opening module, rendered for
 that role: which verb its org performs against the model, what it owns, what it
 hands each sibling org (and gets back), the nearest-level counterpart role in
 each sibling org, its own ladder neighbours, and a shared scenario (one model
@@ -124,6 +124,11 @@ def _ladder(manifest: Any, role: Any) -> tuple[list[Any], list[Any], list[Any]]:
     )
 
 
+def _count_word(n: int) -> str:
+    words = {3: "three", 4: "four", 5: "five", 6: "six", 7: "seven", 8: "eight", 9: "nine"}
+    return words.get(n, str(n))
+
+
 def _join(manifest: Any, roles: list[Any]) -> str:
     return ", ".join(_link(manifest, r) for r in roles)
 
@@ -147,7 +152,7 @@ def _intro(role: Any, org: str, stance: Mapping[str, Any]) -> list[str]:
 
 def _family_table(domain: str, family: Mapping[str, Any], stances: Mapping[str, Any]) -> list[str]:
     out = [
-        "## The five relationships\n",
+        f"## The {_count_word(len(stances['order']))} relationships\n",
         "| Org | Relationship to the model |",
         "|-----|---------------------------|",
     ]
@@ -299,7 +304,7 @@ def _block(container: str) -> str:
         f"{BLOCK_START}\n"
         f"> **Start here:** [Module 00: Your Relationship to the Model]"
         f"({container}/{ORIENTATION_SLUG}/README.md). Where this role sits relative to the "
-        "model, what it owns, and who it works with across the five curricula.\n"
+        "model, what it owns, and who it works with across the sibling curricula.\n"
         f"{BLOCK_END}"
     )
 

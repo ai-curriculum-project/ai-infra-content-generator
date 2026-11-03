@@ -156,7 +156,7 @@ def _family(manifest: Any) -> list[str]:
         f"One of {len(ECOSYSTEM)} sibling orgs in the **AI Career Curriculum ecosystem**, "
         "organized by what you *do* relative to a model:\n",
     ]
-    for sib_org, sib_display, sib_desc in ECOSYSTEM:
+    for sib_org, sib_display, sib_desc, _ in ECOSYSTEM:
         if sib_org.lower() == manifest.org.lower():  # GitHub org names are case-insensitive
             out.append(f"- **{sib_display} Curriculum** *(you are here)* — {sib_desc}.")
         else:
