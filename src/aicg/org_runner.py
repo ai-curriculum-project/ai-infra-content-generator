@@ -2157,7 +2157,9 @@ def _handle_cross_repo_item(
     # Branch + prompt.
     today = utc_now()[:10]
     safe_id = _slug_for_branch(item["work_id"])
-    branch = f"aicg/{today}/{repo_name}/{safe_id}"
+    from .gitops import ensure_branch, ref_segment, stage_all_except_runner_state
+
+    branch = f"aicg/{today}/{ref_segment(repo_name)}/{safe_id}"
     prompt_dir = repo_path / ".aicg" / "cross-repo" / item["work_id"]
     prompt_dir.mkdir(parents=True, exist_ok=True)
     prompt_path = prompt_dir / "prompt.md"
@@ -2167,14 +2169,22 @@ def _handle_cross_repo_item(
     output_dir = prompt_dir / "agent-run"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Checkout a fresh branch from main.
+    # Checkout a fresh branch from main, and refuse to go on unless we're on it:
+    # a failed checkout used to leave us on main, so the commit below landed there.
     for args in (
         ["git", "-C", str(repo_path), "fetch", "origin", "main"],
         ["git", "-C", str(repo_path), "checkout", "main"],
         ["git", "-C", str(repo_path), "pull", "--ff-only"],
-        ["git", "-C", str(repo_path), "checkout", "-B", branch],
     ):
         subprocess.run(args, capture_output=True, text=True, check=False)
+    if not ensure_branch(repo_path, branch):
+        _checkout_main(repo_path)
+        item["status"] = "failed_permanently"
+        item["updated_at"] = utc_now()
+        item["last_failure"] = f"could not check out work branch {branch!r}; nothing was run"
+        result["status"] = "failed_permanently"
+        write_json(queue_path, queue)
+        return result
 
     command = content_generation_command(manifest).format(
         prompt=str(prompt_path),
@@ -2198,9 +2208,9 @@ def _handle_cross_repo_item(
         write_json(queue_path, queue)
         return result
 
-    # Trust working tree; commit any changes.
+    # Trust working tree; commit any changes (never the runner's own .aicg/ state).
     status = subprocess.run(
-        ["git", "-C", str(repo_path), "status", "--porcelain"],
+        ["git", "-C", str(repo_path), "status", "--porcelain", "--", ".", ":(exclude).aicg"],
         capture_output=True, text=True, check=False,
     )
     has_changes = bool(status.stdout.strip())
@@ -2217,8 +2227,14 @@ def _handle_cross_repo_item(
         return result
 
     msg = f"aicg: {work_type} {subtype} for {item.get('path', item['work_id'])}"
+    if stage_all_except_runner_state(repo_path) != 0:
+        _checkout_main(repo_path)
+        item["status"] = "failed_permanently"
+        item["last_failure"] = "git add failed"
+        result["status"] = "failed_permanently"
+        write_json(queue_path, queue)
+        return result
     for args in (
-        ["git", "-C", str(repo_path), "add", "--all"],
         ["git", "-C", str(repo_path), "commit", "-m", msg],
         ["git", "-C", str(repo_path), "push", "-u", "origin", branch],
     ):

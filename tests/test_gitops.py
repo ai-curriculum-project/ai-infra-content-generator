@@ -132,3 +132,57 @@ def test_guardrail_catches_marker_in_file_with_space(tmp_path: Path, monkeypatch
     decision = evaluate_guardrails(repo, branch="aicg/x", changed_files=git_changed_files(repo))
 
     assert any("needs-research" in b for b in decision.blockers)
+
+
+# --- branch names that git accepts ---------------------------------------------------
+
+
+def _git_accepts(name: str) -> bool:
+    import subprocess
+
+    return subprocess.run(["git", "check-ref-format", "--branch", name],
+                          capture_output=True, check=False).returncode == 0
+
+
+def test_dotgithub_repo_gets_a_valid_branch_name():
+    from datetime import date
+
+    from aicg.gitops import branch_name, ref_segment
+
+    assert ref_segment(".github") == "dotgithub"
+    assert ref_segment("ai-infra-engineer-solutions") == "ai-infra-engineer-solutions"
+    assert ref_segment("..weird name.lock") == "dotweird-name-lock"
+    name = branch_name(".github", "org-profile-stale", date(2026, 7, 3))
+    assert name == "aicg/2026-07-03/dotgithub/org-profile-stale"
+    assert _git_accepts(name)
+
+
+def test_ensure_branch_reports_whether_the_checkout_happened(tmp_path):
+    import subprocess
+
+    from aicg.gitops import ensure_branch
+
+    repo = tmp_path / "r"
+    repo.mkdir()
+    for args in (["init", "-q", "-b", "main"], ["-c", "user.email=a@b", "-c", "user.name=a",
+                                                 "commit", "-q", "--allow-empty", "-m", "init"]):
+        subprocess.run(["git", "-C", str(repo), *args], check=True)
+    assert ensure_branch(repo, "aicg/2026-11-03/dotgithub/x") is True
+    # An invalid name can't be checked out, and the caller must be told.
+    assert ensure_branch(repo, "aicg/2026-11-03/.github/x") is False
+
+
+def test_stage_excludes_runner_state(tmp_path):
+    import subprocess
+
+    from aicg.gitops import stage_all_except_runner_state
+
+    repo = tmp_path / "r"
+    (repo / ".aicg" / "run").mkdir(parents=True)
+    subprocess.run(["git", "-C", str(repo), "init", "-q", "-b", "main"], check=True)
+    (repo / ".aicg" / "run" / "prompt.md").write_text("prompt")
+    (repo / "README.md").write_text("real change")
+    assert stage_all_except_runner_state(repo) == 0
+    staged = subprocess.run(["git", "-C", str(repo), "diff", "--cached", "--name-only"],
+                            capture_output=True, text=True, check=True).stdout.split()
+    assert staged == ["README.md"]
