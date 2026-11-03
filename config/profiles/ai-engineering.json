@@ -30,7 +30,10 @@
     "rag-engineer": "Ingestion & chunking, embeddings, vector DBs & ANN tuning, learning-to-rank, hybrid retrieval, reranking",
     "senior-agentic-ai-engineer": "Agent systems from an architecture, eval & observability infra, multi-agent at scale, reliability, cost",
     "agentic-systems-architect": "When not to use an agent, orchestration & memory architecture, eval harnesses, security, durable execution",
-    "forward-deployed-engineer": "Customer discovery, integrating into enterprise stacks, evals on customer data, demo→production, field feedback loops"
+    "forward-deployed-engineer": "Customer discovery, integrating into enterprise stacks, evals on customer data, demo→production, field feedback loops",
+    "agent-platform-engineer": "Internal agent platforms: harnesses, tool & MCP registries, sandboxing, permissions, shared evals & tracing, paved roads",
+    "voice-agent-engineer": "STT/TTS & speech-to-speech, latency & turn-taking, telephony/WebRTC, vision inputs, voice & multimodal evals",
+    "ai-engineering-manager": "Hiring & leveling AI roles, planning non-deterministic work, eval-driven delivery, vendor risk, teams that use coding agents"
   },
   "quick_start_role": "agentic-ai-developer",
   "technologies": {
