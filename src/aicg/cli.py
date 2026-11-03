@@ -448,6 +448,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     org_render_profile.set_defaults(func=cmd_org_render_profile)
 
+    org_orientation = org_subparsers.add_parser(
+        "render-orientation",
+        help="Write each role's 'Your Relationship to the Model' orientation module "
+        "(from config/stances.json + every domain manifest)",
+    )
+    add_org_args(org_orientation)
+    org_orientation.add_argument(
+        "--role", default=None, help="Only this role id (default: every role in --domain)."
+    )
+    org_orientation.add_argument(
+        "--all-domains", action="store_true", help="Every role in every domain."
+    )
+    org_orientation.add_argument(
+        "--stdout", action="store_true", help="Print the README for --role instead of writing."
+    )
+    org_orientation.set_defaults(func=cmd_org_render_orientation)
+
     org_bootstrap_prompt = org_subparsers.add_parser(
         "bootstrap-prompt",
         help="(Re)write a role's research+plan prompt packet (no scaffold) for seeding",
@@ -1502,6 +1519,42 @@ def cmd_org_render_profile(args: argparse.Namespace) -> int:
         print(f"Wrote {args.output}")
     else:
         sys.stdout.write(text)
+    return 0
+
+
+def cmd_org_render_orientation(args: argparse.Namespace) -> int:
+    from .domains import DEFAULT_DOMAIN, _runner_root, domain_config_path, list_domains
+    from .orientation import StanceError, load_stances, render_orientation, write_orientation
+
+    try:
+        stances = load_stances(_runner_root() / "config" / "stances.json")
+    except (OSError, StanceError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    family = {d: load_manifest(domain_config_path(d)) for d in list_domains()}
+    missing = sorted(set(family) - set(stances["domains"]))
+    if missing:
+        print(f"error: stances.json has no stance for domain(s) {missing}", file=sys.stderr)
+        return 2
+    domain = getattr(args, "domain", None) or DEFAULT_DOMAIN
+    targets = [
+        (d, r.id)
+        for d in (family if args.all_domains else [domain])
+        for r in family[d].roles
+        if args.role in (None, r.id)
+    ]
+    if not targets:
+        print(f"error: no role {args.role!r} in the selected domain(s)", file=sys.stderr)
+        return 1
+    if args.stdout:
+        d, rid = targets[0]
+        sys.stdout.write(render_orientation(rid, d, family, stances)["README.md"])
+        return 0
+    workspace = resolve_workspace(args)
+    for d, rid in targets:
+        written = write_orientation(workspace, rid, d, family, stances)
+        status = f"{len(written)} file(s)" if written else "skipped (repo not in workspace)"
+        print(f"{d}/{rid}: {status}")
     return 0
 
 
