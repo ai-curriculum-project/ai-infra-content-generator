@@ -19,7 +19,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .domain_provision import ECOSYSTEM, _org_display
+from .domain_provision import ECOSYSTEM, UMBRELLA_SITE, _org_display, site_url
 
 PROFILE_KEYS = {
     "tagline",
@@ -127,6 +127,8 @@ def _header(manifest: Any, profile: dict[str, Any]) -> list[str]:
         f"({contrib_url})",
         f"[![Repositories: {total}](https://img.shields.io/badge/repositories-{total}-blue.svg)]"
         f"(https://github.com/orgs/{org}/repositories)\n",
+        f"🌐 **Website:** [{site_url(org).removeprefix('https://').rstrip('/')}]({site_url(org)}) · "
+        f"part of the [AI Career Curriculum]({UMBRELLA_SITE})\n",
     ]
 
 
@@ -161,7 +163,8 @@ def _family(manifest: Any) -> list[str]:
             out.append(f"- **{sib_display} Curriculum** *(you are here)* — {sib_desc}.")
         else:
             out.append(
-                f"- **[{sib_display} Curriculum](https://github.com/{sib_org})** — {sib_desc}."
+                f"- **[{sib_display} Curriculum](https://github.com/{sib_org})** — {sib_desc}. "
+                f"([site]({site_url(sib_org)}))"
             )
     return out + ["", "---\n"]
 
