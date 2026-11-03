@@ -175,7 +175,9 @@ install_cron() {
 5 5 * * * $(job_command daily-discussions)
 35 5 * * * $(job_command resolve-markers)
 50 3 * * * $(job_command fill-next)
-5 7 * * 0 $(job_command completeness)${per_role_lines}
+5 7 * * 0 $(job_command completeness)
+45 0 28 * * $(job_command discover-roles)
+5 8 * * * $(job_command approvals)${per_role_lines}
 $marker_end"
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -446,6 +448,11 @@ install_systemd() {
   # Weekly completeness matrices for every repo, org, and the parent org
   # (after every domain's Sun 03-06 audits). Commits only changed numbers.
   write_systemd_pair "$unit_dir" "completeness" "completeness" "Sun 07:05:00"
+  # Monthly role discovery for ai-infra (day 28; per-role research uses days 1-13).
+  write_systemd_pair "$unit_dir" "discover-roles" "discover-roles" "*-*-28 00:45:00"
+  # Daily approval loop for every domain: act on `approved` proposal issues,
+  # announce new ones. 08:05, off the hourly remediate minute.
+  write_systemd_pair "$unit_dir" "approvals" "approvals" "*-*-* 08:05:00"
 
   install_per_role_research "$unit_dir"
   install_per_role_review "$unit_dir"
@@ -470,7 +477,9 @@ install_systemd() {
       aicg-daily-discussions.timer \
       aicg-fleet-digest.timer \
       aicg-fill-next.timer \
-      aicg-completeness.timer
+      aicg-completeness.timer \
+      aicg-discover-roles.timer \
+      aicg-approvals.timer
     local slug
     for slug in "${PER_ROLE_SLUGS[@]}"; do
       systemctl --user enable --now "aicg-research-role@${slug}.timer"

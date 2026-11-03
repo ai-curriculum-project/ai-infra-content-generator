@@ -310,6 +310,8 @@ def research_apply(
                 "validation": _validation_summary(validation),
                 "proposal_files": proposal["written"],
                 "pr": pr_outcome,
+                "approval_issue": _open_approval_issue(
+                    manifest, role, month, validation, pr_outcome, proposal["written"]),
             }
         )
 
@@ -564,6 +566,48 @@ def _validation_summary(validation: dict[str, Any]) -> dict[str, Any]:
         "rejected_count": len(validation["rejected"]),
         "input_counts": validation["input_counts"],
     }
+
+
+def _open_approval_issue(
+    manifest: OrgManifest,
+    role: RoleConfig,
+    month: str,
+    validation: dict[str, Any],
+    pr_outcome: dict[str, Any] | None,
+    proposal_files: list[str] | None = None,
+) -> str | None:
+    """Open a content-proposal issue so the PR doesn't sit unnoticed.
+
+    Only when something was accepted and the PR exists. Never raises:
+    research must not fail because GitHub issue creation did.
+    """
+    accepted = validation.get("accepted", {})
+    if not any(accepted.get(k) for k in ("modules", "exercises", "projects")):
+        return None
+    try:
+        from .approvals import content_issue, open_content_issue, pr_url_from_outcome
+        from .domain_provision import _org_display
+        from .domains import domain_config_path, list_domains
+        from .org_config import load_manifest
+        from .role_discovery import default_gh
+
+        pr_url = pr_url_from_outcome(pr_outcome)
+        if not pr_url:
+            return None
+        domain = next((d for d in list_domains()
+                       if load_manifest(domain_config_path(d)).org.lower() == manifest.org.lower()),
+                      None)
+        if domain is None:
+            return None
+        delta = None
+        for path in proposal_files or []:
+            if path.endswith(CURRICULUM_PLAN_DELTA_FILTERED):
+                delta = json.loads(Path(path).read_text(encoding="utf-8"))
+        title, body = content_issue(domain, _org_display(manifest.org), role.id, role.title, month,
+                                    validation, pr_url, delta=delta)
+        return open_content_issue(default_gh, title, body)
+    except Exception as exc:  # noqa: BLE001 - best effort; the PR still exists
+        return f"issue_failed: {type(exc).__name__}: {exc}"
 
 
 def _open_proposal_pr(
