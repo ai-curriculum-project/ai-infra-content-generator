@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .inventory import RepositoryInfo, WorkspaceInventory
+from .depth import exercise_solution_is_stub
 from .source_registry import SourceRegistry, extract_urls
 from .state import relative_path, utc_now, write_state
 
@@ -36,7 +37,9 @@ PLACEHOLDER_PATTERNS = {
     "todo": re.compile(r"\bTODO\b|FIXME|\bTBD\b", re.IGNORECASE),
     "placeholder": re.compile(r"\bplaceholder\b|coming soon|lorem ipsum", re.IGNORECASE),
 }
-EXERCISE_ID_PATTERN = re.compile(r"^(exercise-\d+)")
+# Learning repos name exercises ``exercise-NN-*``; one (senior-engineer) uses
+# ``lab-NN-*``. Both pair with ``exercise-NN`` on the solutions side.
+EXERCISE_ID_PATTERN = re.compile(r"^((?:exercise|lab)-\d+)")
 
 # Acceptable exercise-level solution artifacts. Any one of these inside
 # an exercise directory satisfies the per-exercise solution check.
@@ -202,8 +205,28 @@ def audit_learning_solution_parity(
 
             exercise_status = "ok"
             exercise_gaps: list[dict[str, Any]] = []
+            # Scaffolding writes a placeholder README for every exercise, so an
+            # artifact existing isn't enough: a stub is treated as missing.
+            is_stub = found_artifact is not None and exercise_solution_is_stub(
+                solution_dir or found_artifact
+            )
 
-            if found_artifact is None:
+            if is_stub:
+                exercise_status = "missing_solution"
+                exercise_gaps.append(
+                    gap(
+                        "missing_exercise_solution",
+                        "error",
+                        f"Solution for {module_id}/{exercise_id} is a scaffold stub, not a solution.",
+                        module_id=module_id,
+                        exercise_id=exercise_id,
+                        learning_path=relative_path(exercise_entry, learning_repo.path),
+                        expected_path=relative_path(found_artifact, solution_repo.path),
+                        accepted_artifacts=list(DEFAULT_EXERCISE_ARTIFACTS),
+                        stub=True,
+                    )
+                )
+            elif found_artifact is None:
                 if has_module_rationale:
                     exercise_status = "module_rationale_only"
                     exercise_gaps.append(
@@ -275,6 +298,7 @@ def audit_learning_solution_parity(
                     else None,
                     "required_artifacts": list(DEFAULT_EXERCISE_ARTIFACTS),
                     "status": exercise_status,
+                    "stub": is_stub,
                     "gaps": exercise_gaps,
                 }
             )
@@ -488,7 +512,9 @@ def normalize_exercise_id(path: Path) -> str:
     """Return the canonical ``exercise-NN`` id for either a file or directory."""
     name = path.stem if path.is_file() else path.name
     match = EXERCISE_ID_PATTERN.match(name)
-    return match.group(1) if match else name
+    if not match:
+        return name
+    return re.sub(r"^lab-", "exercise-", match.group(1))
 
 
 def exercise_slug(path: Path) -> str | None:

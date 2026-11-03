@@ -5,6 +5,9 @@ from conftest import make_security_workspace, write_file
 from aicg.audit import audit_repo, scan_placeholders
 from aicg.planner import plan_from_audit
 
+# Enough words to read as a real solution (depth.MIN_EXERCISE_SOLUTION_WORDS).
+REAL_BODY = "Walk through the assets, trust boundaries, and mitigations step by step. " * 8
+
 
 def test_audit_detects_missing_module_level_solution_parity(tmp_path):
     workspace = make_security_workspace(tmp_path)
@@ -76,7 +79,7 @@ def test_audit_finds_slug_bearing_exercise_dir(tmp_path):
         / "mod-001-ml-security-foundations"
         / "exercise-01-threat-model"
         / "SOLUTION.md",
-        "# Threat Model Solution\n",
+        "# Threat Model Solution\n\n" + REAL_BODY,
     )
 
     report = audit_repo(workspace, "ai-infra-security-solutions", write_report=False)
@@ -102,7 +105,7 @@ def test_audit_accepts_alternative_exercise_artifacts(tmp_path):
         / "mod-001-ml-security-foundations"
         / "exercise-01-threat-model"
         / "README.md",
-        "# Threat Model Walkthrough\n\nSteps...\n",
+        "# Threat Model Walkthrough\n\nSteps...\n" + REAL_BODY,
     )
 
     report = audit_repo(workspace, "ai-infra-security-solutions", write_report=False)
@@ -255,3 +258,57 @@ def test_placeholder_scan_flags_manual_review_and_needs_research(tmp_path):
 
     assert {finding["type"] for finding in findings} >= {"manual_review", "needs_research"}
     assert all(finding["severity"] == "error" for finding in findings)
+
+
+SCAFFOLD = (
+    "# mod-001/exercise-01 — Solution\n\n"
+    "> Scaffolded by `aicg org execute-plan`. The reference solution lands here on the next "
+    "autonomous cycle.\n"
+)
+
+
+def test_scaffold_stub_solution_counts_as_missing(tmp_path):
+    workspace = make_security_workspace(tmp_path)
+    solutions = workspace / "ai-infra-security-solutions"
+    write_file(
+        solutions / "modules" / "mod-001-ml-security-foundations"
+        / "exercise-01-threat-model" / "README.md",
+        SCAFFOLD,
+    )
+
+    report = audit_repo(workspace, "ai-infra-security-solutions", write_report=False)
+
+    exercise = report["modules"][0]["exercises"][0]
+    assert exercise["status"] == "missing_solution"
+    assert exercise["stub"] is True
+    stub_gaps = [g for g in exercise["gaps"] if g["type"] == "missing_exercise_solution"]
+    assert stub_gaps and stub_gaps[0]["stub"] is True
+    plan = plan_from_audit(report, repo_path=solutions)
+    assert plan["work_item_count"] == 1
+
+
+def test_real_solution_is_not_flagged_as_stub(tmp_path):
+    workspace = make_security_workspace(tmp_path)
+    solutions = workspace / "ai-infra-security-solutions"
+    write_file(
+        solutions / "modules" / "mod-001-ml-security-foundations"
+        / "exercise-01-threat-model" / "SOLUTION.md",
+        "# Threat model\n\n" + "A real worked walkthrough of the threat model. " * 20,
+    )
+
+    report = audit_repo(workspace, "ai-infra-security-solutions", write_report=False)
+
+    exercise = report["modules"][0]["exercises"][0]
+    assert exercise["status"] != "missing_solution"
+    assert exercise["stub"] is False
+
+
+def test_lab_named_exercises_pair_with_exercise_solutions(tmp_path):
+    from pathlib import Path
+
+    from aicg.audit import discover_exercise_entries, normalize_exercise_id
+
+    module = Path(tmp_path) / "mod-201"
+    write_file(module / "exercises" / "lab-01-build-operator.md", "# Lab 01\n")
+    entries = discover_exercise_entries(module)
+    assert [normalize_exercise_id(e) for e in entries] == ["exercise-01"]

@@ -596,6 +596,41 @@ if files and all(ok.fullmatch(f) for f in files) and re.fullmatch(r'[0-9a-f]{40}
     daily-discussions)
       run_aicg_org discussions
       ;;
+    completeness)
+      # Weekly: recompute COMPLETENESS_MATRIX.md in every role repo, every
+      # org's .github, and the parent org's .github, then commit and push the
+      # ones whose numbers changed (date-only changes aren't written). Covers
+      # all domains; ignores --manifest. Runs on the runner because the
+      # curriculum plans (the denominator) live here.
+      PARENT_DIR="$WORKSPACE/ai-curriculum-project-dotgithub"
+      if [[ ! -d "$PARENT_DIR/.git" ]]; then
+        git clone -q https://github.com/ai-curriculum-project/.github.git "$PARENT_DIR" \
+          || die "could not clone the parent org's .github repo"
+      fi
+      git -C "$PARENT_DIR" pull -q --ff-only || log "parent .github pull failed; continuing"
+      # list-domains prints a table; the domain names are the ✓ rows' first field.
+      for dom in $("$AICG_BIN" org list-domains 2>/dev/null | awk '/✓/ {print $1}'); do
+        "$AICG_BIN" org sync --workspace "$WORKSPACE" --domain "$dom" >/dev/null 2>&1 \
+          || log "sync failed for $dom; matrices may use stale content"
+      done
+      "$AICG_BIN" org completeness --workspace "$WORKSPACE" --all-domains --write \
+        --family "$PARENT_DIR/COMPLETENESS_MATRIX.md" | grep -v "^  L" || true
+      CHANGED=0
+      for repo_dir in "$WORKSPACE"/*/; do
+        repo_dir="${repo_dir%/}"
+        [[ -d "$repo_dir/.git" && -f "$repo_dir/COMPLETENESS_MATRIX.md" ]] || continue
+        if git -C "$repo_dir" status --porcelain -- COMPLETENESS_MATRIX.md | grep -q .; then
+          git -C "$repo_dir" add COMPLETENESS_MATRIX.md
+          git -C "$repo_dir" commit -q -m "docs: update completeness matrix (aicg completeness)"
+          if git -C "$repo_dir" push -q origin HEAD; then
+            CHANGED=$((CHANGED + 1))
+          else
+            log "push failed: $(basename "$repo_dir")"
+          fi
+        fi
+      done
+      log "completeness: updated $CHANGED repos"
+      ;;
     fleet-digest)
       # Project-wide daily observability: one ntfy push summarizing fill
       # progress across all domains (N/total roles authored, mode, BAR).

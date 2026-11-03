@@ -2095,7 +2095,10 @@ def queue_priority(manifest: OrgManifest, repo: str, item: dict[str, Any]) -> in
     high-severity refresh (broken security guidance, EOL'd tool) gets
     a large negative bias.
     """
-    role = next((role for role in manifest.roles if role.solution_repo == repo), None)
+    role = next(
+        (role for role in manifest.roles if repo in (role.solution_repo, role.learning_repo)),
+        None,
+    )
     base = role.level if role else 100
     severity_bias = _severity_bias(item)
     return severity_bias + base * 1000 + int(item.get("priority", 100))
@@ -2369,6 +2372,21 @@ def _build_cross_repo_prompt(
             "the appropriate table preserving the existing column shape. "
             "If a referenced module/project doesn't exist on disk, remove "
             "the row. Do NOT invent content — just align the navigation."
+        )
+
+    if work_type == "learning_gap" and subtype == "thin_module":
+        return common + (
+            "\n## Specific instructions\n\n"
+            "This module is a skeleton: the files exist but it was never written. "
+            "Author the WHOLE module in the module directory that contains the path "
+            "above, at the depth of this repo's complete modules (read two of them "
+            "first): a README with objectives and structure, full lecture chapters "
+            "(at least 3,000 words in total; complete modules here are usually "
+            "10,000+), complete exercise briefs in exercises/ (goal, steps, "
+            "deliverables, acceptance criteria; no worked solutions), and quiz.md. "
+            "Keep the module id, folder, and exercise slugs unchanged so the "
+            "solutions repo still pairs. Use official sources only; mark unresolved "
+            "claims with `<!-- needs-research: ... -->`."
         )
 
     if work_type == "learning_gap":
@@ -2815,6 +2833,11 @@ def _severity_bias(item: dict[str, Any]) -> int:
         # PR responses always jump structural gaps — keeping an open PR
         # moving beats opening another one.
         return -200_000
+    if work_type == "learning_gap" and item.get("subtype") == "thin_module":
+        # A skeleton module is structural content work. It goes just ahead of
+        # its own role's solution gaps (solutions depend on the lesson); the
+        # role-level term still puts entry roles first.
+        return -500
     if not is_refresh and not is_backlog:
         return 0
     if severity == "high":

@@ -465,6 +465,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     org_orientation.set_defaults(func=cmd_org_render_orientation)
 
+    org_completeness = org_subparsers.add_parser(
+        "completeness",
+        help="Measure calculated completeness and write COMPLETENESS_MATRIX.md files",
+    )
+    add_org_args(org_completeness)
+    org_completeness.add_argument(
+        "--all-domains", action="store_true", help="Every domain, not just --domain."
+    )
+    org_completeness.add_argument(
+        "--write", action="store_true",
+        help="Write COMPLETENESS_MATRIX.md into each role repo and each org's .github checkout.",
+    )
+    org_completeness.add_argument(
+        "--family", default=None,
+        help="Also write the cross-org matrix to this path (e.g. the parent org's .github checkout).",
+    )
+    org_completeness.set_defaults(func=cmd_org_completeness)
+
     org_bootstrap_prompt = org_subparsers.add_parser(
         "bootstrap-prompt",
         help="(Re)write a role's research+plan prompt packet (no scaffold) for seeding",
@@ -1555,6 +1573,30 @@ def cmd_org_render_orientation(args: argparse.Namespace) -> int:
         written = write_orientation(workspace, rid, d, family, stances)
         status = f"{len(written)} file(s)" if written else "skipped (repo not in workspace)"
         print(f"{d}/{rid}: {status}")
+    return 0
+
+
+def cmd_org_completeness(args: argparse.Namespace) -> int:
+    from .completeness import measure_org, write_family_matrix, write_matrices
+    from .domains import DEFAULT_DOMAIN, domain_config_path, list_domains
+
+    workspace = resolve_workspace(args)
+    domains = list_domains() if args.all_domains else [getattr(args, "domain", None) or DEFAULT_DOMAIN]
+    manifests = [load_manifest(domain_config_path(d)) for d in domains]
+    for manifest in manifests:
+        roles = measure_org(manifest, workspace)
+        overall = sum(r.overall_pct for r in roles) / len(roles) if roles else 0.0
+        print(f"{manifest.org}: {overall:.0f}% overall")
+        for r in roles:
+            sol = "n/a" if r.solutions_pct is None else f"{r.solutions_pct:.0f}%"
+            print(f"  L{r.level:<3} {r.role_id:34} modules {r.modules_complete:>2}/{r.modules_total:<2} "
+                  f"learning {r.learning_pct:>3.0f}%  solutions {sol:>4}  overall {r.overall_pct:>3.0f}%")
+        if args.write:
+            for path in write_matrices(manifest, workspace):
+                print(f"  wrote {path}")
+    if args.family:
+        changed = write_family_matrix(manifests, workspace, Path(args.family))
+        print(f"{'wrote' if changed else 'unchanged'} {args.family}")
     return 0
 
 
