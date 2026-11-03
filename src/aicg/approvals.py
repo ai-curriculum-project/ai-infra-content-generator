@@ -130,16 +130,37 @@ class Context:
         return self.runner_dir / ".aicg" / ("org" if domain == "ai-infra" else domain)
 
 
+def _detached(ctx: Context, unit: str, lock_domain: str, job: list[str]) -> list[str]:
+    """A systemd-run command that waits for the domain's lock, then runs ``job``.
+
+    The job wrapper exits (rather than waits) when its lock is held, and the
+    approvals job itself holds the ai-infra lock, so a plain launch of an
+    ai-infra job from here would quit immediately.
+    """
+    lock = ctx.state_dir(lock_domain) / "aicg-org.lock"
+    script = f"while [ -d {shlex.quote(str(lock))} ]; do sleep 60; done; {shlex.join(job)}"
+    return ["systemd-run", "--user", f"--unit={unit}", f"--working-directory={ctx.runner_dir}",
+            "bash", "-c", script]
+
+
+def _job(ctx: Context, name: str, *args: str, domain: str | None = None) -> list[str]:
+    cmd = ["bash", str(ctx.runner_dir / "scripts" / "aicg-org-job.sh"), name, *args,
+           "--workspace", str(ctx.workspace)]
+    if domain is not None:
+        cmd += ["--manifest", str(ctx.manifest_for[domain]), "--state-dir", str(ctx.state_dir(domain))]
+    return cmd
+
+
 def _author(ctx: Context, domain: str, role_id: str) -> Action:
     unit = f"aicg-approved-{role_id}-{int(time.time())}"
-    job = [
-        "bash", str(ctx.runner_dir / "scripts" / "aicg-org-job.sh"), "generate-role", role_id,
-        "--workspace", str(ctx.workspace), "--manifest", str(ctx.manifest_for[domain]),
-        "--state-dir", str(ctx.state_dir(domain)),
-    ]
-    # Detached: authoring takes hours and waits for the domain's lock itself.
-    return Action("start authoring", ["systemd-run", "--user", f"--unit={unit}",
-                                       f"--working-directory={ctx.runner_dir}", *job])
+    return Action("start authoring", _detached(ctx, unit, domain,
+                                                _job(ctx, "generate-role", role_id, domain=domain)))
+
+
+def _refresh_pages(ctx: Context) -> Action:
+    """Re-render profiles, Module 00, and the sites so a new role shows up the same day."""
+    unit = f"aicg-publish-{int(time.time())}"
+    return Action("refresh pages and sites", _detached(ctx, unit, "ai-infra", _job(ctx, "publish")))
 
 
 def _content_actions(meta: dict[str, Any], ctx: Context) -> list[Action]:
@@ -241,6 +262,7 @@ def _role_actions(meta: dict[str, Any], ctx: Context) -> list[Action]:
         Action("pull main", ["git", "-C", runner, "pull", "-q", "--ff-only"]),
         Action("install timers", timers),
         _author(ctx, domain, role_id),
+        _refresh_pages(ctx),
     ]
 
 
