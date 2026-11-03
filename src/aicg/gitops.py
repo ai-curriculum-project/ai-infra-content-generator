@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 from datetime import date
 from pathlib import Path
@@ -15,8 +16,37 @@ class GitOpsError(RuntimeError):
     """Raised when a git or gh operation fails."""
 
 
+def ref_segment(name: str) -> str:
+    """A repo name made safe as one segment of a git branch name.
+
+    Git rejects segments that start with a dot, so ``.github`` (every org's
+    profile repo) silently failed ``checkout -B`` and work landed on main.
+    """
+    text = re.sub(r"[^A-Za-z0-9._-]+", "-", name)
+    if text.startswith("."):
+        text = "dot" + text.lstrip(".")
+    return text.replace(".", "-").strip("-") or "repo"
+
+
 def branch_name(repo_name: str, work_id: str, today: date | None = None) -> str:
-    return f"aicg/{(today or date.today()).isoformat()}/{repo_name}/{work_id}"
+    return f"aicg/{(today or date.today()).isoformat()}/{ref_segment(repo_name)}/{work_id}"
+
+
+def ensure_branch(repo_path: Path, branch: str) -> bool:
+    """Create/reset ``branch`` and check it out; True only if HEAD is now on it."""
+    subprocess.run(["git", "-C", str(repo_path), "checkout", "-B", branch],
+                   capture_output=True, text=True, check=False)
+    head = subprocess.run(["git", "-C", str(repo_path), "rev-parse", "--abbrev-ref", "HEAD"],
+                          capture_output=True, text=True, check=False)
+    return head.returncode == 0 and head.stdout.strip() == branch
+
+
+def stage_all_except_runner_state(repo_path: Path) -> int:
+    """``git add --all``, minus the runner's own ``.aicg/`` state. Returns git's exit code."""
+    return subprocess.run(
+        ["git", "-C", str(repo_path), "add", "--all", "--", ".", ":(exclude).aicg"],
+        capture_output=True, text=True, check=False,
+    ).returncode
 
 
 def select_work_item(
