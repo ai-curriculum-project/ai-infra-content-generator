@@ -23,7 +23,6 @@
   ],
   "focus": {
     "agentic-ai-developer": "LLM fundamentals, prompting & structured output, tool calling, retrieval basics, first agent, shipping",
-    "llm-application-developer": "Prompting, tool calling, streaming & async, model selection, prompt caching, retrieval, minimal evals",
     "agentic-ai-engineer": "Agent loop, frameworks, RAG & memory, multi-agent, evals, guardrails, production, harness engineering",
     "ai-eval-engineer": "Trace instrumentation, trajectory & tool evals, LLM-as-judge, RAG evals, eval-gated CI/CD, online evals",
     "applied-ai-engineer": "AI feature design, production prompting, RAG in product, orchestration, product agents, guardrails",

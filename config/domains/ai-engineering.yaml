@@ -137,19 +137,6 @@
       ]
     },
     {
-      "id": "llm-application-developer",
-      "title": "LLM Application Developer",
-      "level": 20,
-      "learning_repo": "llm-application-developer-learning",
-      "solution_repo": "llm-application-developer-solutions",
-      "aliases": [
-        "LLM Application Developer",
-        "Generative AI Developer",
-        "AI Application Engineer",
-        "LLM App Engineer"
-      ]
-    },
-    {
       "id": "agentic-ai-engineer",
       "title": "Agentic AI Engineer",
       "level": 30,
@@ -158,7 +145,6 @@
       "aliases": [
         "AI Agent Engineer",
         "Agent Engineer",
-        "Applied AI Engineer",
         "Generative AI Engineer",
         "LLM Engineer"
       ]

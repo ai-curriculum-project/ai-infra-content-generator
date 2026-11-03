@@ -162,21 +162,21 @@
       "aliases": [
         "AI Risk Engineer",
         "ML Risk Engineer",
-        "Responsible AI Engineer",
-        "AI Assurance Engineer"
+        "Responsible AI Engineer"
       ]
     },
     {
       "id": "ai-evaluation-engineer",
-      "title": "AI Evaluation Engineer",
+      "title": "AI Assurance Engineer",
       "level": 35,
       "learning_repo": "ai-evaluation-engineer-learning",
       "solution_repo": "ai-evaluation-engineer-solutions",
       "aliases": [
-        "AI Evaluation Engineer",
-        "Model Evaluation Engineer",
-        "LLM Evaluation Engineer",
-        "AI Test & Evaluation Engineer"
+        "AI Test & Evaluation Engineer",
+        "AI Assurance Engineer",
+        "AI Evaluation & Assurance Engineer",
+        "Responsible AI Assurance Engineer",
+        "AI Safety Evaluation Engineer"
       ]
     },
     {
@@ -242,7 +242,6 @@
         "Chief AI Officer",
         "Head of AI",
         "VP of AI",
-        "Head of AI Governance",
         "Director of AI Strategy"
       ]
     },
