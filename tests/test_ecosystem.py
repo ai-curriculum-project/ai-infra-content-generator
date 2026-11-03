@@ -41,3 +41,16 @@ def test_every_ecosystem_org_has_a_stance():
     for sibling in ECOSYSTEM:
         domain = configs.get(sibling.org.lower())
         assert domain in stances["domains"], f"no stance for {sibling.org}"
+
+
+def test_no_title_or_alias_is_shared_across_roles():
+    """Research counts postings per title/alias; a name on two roles double-counts."""
+    owner: dict[str, str] = {}
+    paths = [REPO_ROOT / "config" / "aicg-org.yaml", *sorted((REPO_ROOT / "config" / "domains").glob("*.yaml"))]
+    clashes = []
+    for path in paths:
+        for role in json.loads(path.read_text(encoding="utf-8"))["roles"]:
+            for name in {role["title"].lower(), *(a.lower() for a in role.get("aliases", []))}:
+                if owner.setdefault(name, role["id"]) != role["id"]:
+                    clashes.append(f"{name!r}: {owner[name]} vs {role['id']}")
+    assert not clashes, clashes
