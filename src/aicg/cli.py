@@ -1683,7 +1683,7 @@ def cmd_org_bootstrap_domain(args: argparse.Namespace) -> int:
 
     # Org-profile README under a local .github/profile/ tree.
     profile = render_org_profile(manifest, tagline=args.tagline)
-    dotgithub = workspace / f"{manifest.org}-dotgithub"
+    dotgithub = manifest.repo_path(workspace, ".github")
     profile_path = dotgithub / "profile" / "README.md"
     profile_path.parent.mkdir(parents=True, exist_ok=True)
     profile_path.write_text(profile, encoding="utf-8")
@@ -1779,7 +1779,7 @@ def cmd_org_audit_links(args: argparse.Namespace) -> int:
     all_work_items: list = []
     repo_summaries: list = []
     for repo in manifest.repo_names:
-        repo_path = workspace / repo
+        repo_path = manifest.repo_path(workspace, repo)
         if not repo_path.exists():
             continue
         report = audit_links(
@@ -1829,7 +1829,7 @@ def cmd_org_audit_versions(args: argparse.Namespace) -> int:
     all_work_items: list = []
     repo_summaries: list = []
     for repo in manifest.repo_names:
-        repo_path = workspace / repo
+        repo_path = manifest.repo_path(workspace, repo)
         if not repo_path.exists():
             continue
         report = audit_versions(repo_path, registry_path=registry)
@@ -1978,7 +1978,7 @@ def cmd_org_pipeline_tick(args: argparse.Namespace) -> int:
     repo_changes: list[RepoChange] = []
     repos = list(manifest.learning_repo_names) + list(manifest.solution_repo_names)
     for repo in repos:
-        repo_path = workspace / repo
+        repo_path = manifest.repo_path(workspace, repo)
         if not repo_path.exists():
             continue
         try:
@@ -2164,7 +2164,7 @@ def cmd_org_review(args: argparse.Namespace) -> int:
     all_work_items: list = []
     repo_summaries: list = []
     for repo in repos_to_review:
-        repo_path = workspace / repo
+        repo_path = manifest.repo_path(workspace, repo)
         if not repo_path.exists():
             continue
         report = review_existing_artifacts(
@@ -2224,7 +2224,7 @@ def cmd_org_audit_learning(args: argparse.Namespace) -> int:
     total_gaps = 0
     repos_with_gaps = 0
     for repo in manifest.learning_repo_names:
-        repo_path = workspace / repo
+        repo_path = manifest.repo_path(workspace, repo)
         if not repo_path.exists():
             continue
         report = audit_learning_repo(repo_path)
@@ -2270,7 +2270,7 @@ def cmd_org_audit_curriculum(args: argparse.Namespace) -> int:
     workspace = resolve_workspace(args)
     total_gaps = 0
     for repo in manifest.repo_names:
-        repo_path = workspace / repo
+        repo_path = manifest.repo_path(workspace, repo)
         if not repo_path.exists():
             continue
         report = audit_curriculum_nav(repo_path)

@@ -51,6 +51,8 @@ class ExtraRepoConfig:
     # GitHub org that owns the repo when it isn't the manifest's org (shared
     # repos such as the runner live in the parent org).
     org: str | None = None
+    # Local checkout directory, when it can't simply be the repo name.
+    local_dir: str | None = None
 
 
 @dataclass(frozen=True)
@@ -115,6 +117,24 @@ class OrgManifest:
         names.extend(repo.name for repo in self.extra_repos if repo.release)
         return list(dict.fromkeys(names))
 
+    def local_dir(self, repo: str) -> str:
+        """Directory name for ``repo`` in the shared workspace.
+
+        Every org has a repo called ``.github``, and all domains share one
+        workspace, so ``.github`` gets a per-org directory
+        (``<org>-dotgithub``). Other repo names are unique, so they map to
+        themselves.
+        """
+        extra = next((e for e in self.extra_repos if e.name == repo), None)
+        if extra is not None and extra.local_dir:
+            return extra.local_dir
+        if repo == ".github":
+            return f"{self.org.lower()}-dotgithub"
+        return repo
+
+    def repo_path(self, workspace: Path | str, repo: str) -> Path:
+        return Path(workspace) / self.local_dir(repo)
+
     def remote_for(self, repo: str) -> str:
         url = self.default_remote.format(org=self.org, repo=repo)
         owner = next((e.org for e in self.extra_repos if e.name == repo and e.org), None)
@@ -177,6 +197,7 @@ def load_manifest(path: Path | None = None) -> OrgManifest:
             kind=item.get("kind", "extra"),
             release=bool(item.get("release", False)),
             org=item.get("org"),
+            local_dir=item.get("local_dir"),
         )
         for item in raw.get("extra_repos", [])
     )

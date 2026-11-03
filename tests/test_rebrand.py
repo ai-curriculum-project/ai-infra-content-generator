@@ -14,8 +14,8 @@ def _setup_workspace(tmp_path: Path) -> tuple[Path, Path, "OrgManifest"]:
     workspace = tmp_path / "workspace"
     (workspace / "ai-infra-security-learning").mkdir(parents=True)
     (workspace / "ai-infra-security-solutions").mkdir(parents=True)
-    (workspace / ".github" / "profile").mkdir(parents=True)
     manifest = load_manifest(write_minimal_manifest(tmp_path / "aicg-org.yaml"))
+    (manifest.repo_path(workspace, ".github") / "profile").mkdir(parents=True)
     return workspace, tmp_path / "state", manifest
 
 
@@ -73,8 +73,9 @@ def test_rebrand_idempotent_already_branded(tmp_path: Path) -> None:
 
 def test_rebrand_github_repo_targets_profile_readme(tmp_path: Path) -> None:
     workspace, state_dir, manifest = _setup_workspace(tmp_path)
-    write_file(workspace / ".github" / "profile" / "README.md", "# Org Profile\n")
-    write_file(workspace / ".github" / "README.md", "# Org README\n")
+    dotgithub = manifest.repo_path(workspace, ".github")
+    write_file(dotgithub / "profile" / "README.md", "# Org Profile\n")
+    write_file(dotgithub / "README.md", "# Org README\n")
 
     report = rebrand_run(
         manifest, workspace, state_dir=state_dir, apply=False, repos=[".github"]

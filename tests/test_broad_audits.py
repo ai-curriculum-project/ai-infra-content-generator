@@ -206,13 +206,14 @@ def test_curriculum_nav_clean_when_aligned(tmp_path: Path) -> None:
 
 def test_org_profile_flags_missing_repos(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
-    (workspace / ".github" / "profile").mkdir(parents=True)
+    manifest = load_manifest(write_minimal_manifest(tmp_path / "aicg-org.yaml"))
+    dotgithub = manifest.repo_path(workspace, ".github")
+    (dotgithub / "profile").mkdir(parents=True)
     # Empty profile README
     write_file(
-        workspace / ".github" / "profile" / "README.md",
+        dotgithub / "profile" / "README.md",
         "# AI Infra Curriculum\n\n" + "Welcome." * 30,
     )
-    manifest = load_manifest(write_minimal_manifest(tmp_path / "aicg-org.yaml"))
 
     report = audit_org_profile(manifest, workspace, state_dir=tmp_path / "state")
 
@@ -222,9 +223,10 @@ def test_org_profile_flags_missing_repos(tmp_path: Path) -> None:
 
 def test_org_profile_flags_thin_doc(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
-    (workspace / ".github" / "profile").mkdir(parents=True)
-    write_file(workspace / ".github" / "profile" / "README.md", "# Hi")
     manifest = load_manifest(write_minimal_manifest(tmp_path / "aicg-org.yaml"))
+    dotgithub = manifest.repo_path(workspace, ".github")
+    (dotgithub / "profile").mkdir(parents=True)
+    write_file(dotgithub / "profile" / "README.md", "# Hi")
 
     report = audit_org_profile(manifest, workspace, state_dir=tmp_path / "state")
 

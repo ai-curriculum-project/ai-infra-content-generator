@@ -89,7 +89,7 @@ def issues_run(
     for repo, items in by_repo.items():
         if not repo:
             continue
-        repo_path = workspace / repo
+        repo_path = manifest.repo_path(workspace, repo)
         repo_reports.append(
             _reconcile_repo(repo, repo_path, items, config)
         )

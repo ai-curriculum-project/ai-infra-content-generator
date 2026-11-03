@@ -267,7 +267,7 @@ def audit_org_profile(
     state_root = state_dir_for_manifest(manifest, state_dir)
     state_root.mkdir(parents=True, exist_ok=True)
 
-    profile_repo = workspace / ".github"
+    profile_repo = manifest.repo_path(workspace, ".github")
     findings: list[ProfileFinding] = []
     docs_to_check = [
         profile_repo / "README.md",
