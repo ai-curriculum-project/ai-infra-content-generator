@@ -43,7 +43,8 @@ LEARNING_SOLUTIONS_ROLES = [
     "agentic-ai-developer", "agentic-ai-engineer", "senior-agentic-ai-engineer",
     "agentic-systems-architect",
 ]
-EXTRA_REPOS = ["ai-infra-content-generator", "ai-agent-guidebook", ".github"]
+# The .github profile repo is checked out as <org>-dotgithub (OrgManifest.local_dir).
+EXTRA_REPOS = ["ai-infra-content-generator", "ai-agent-guidebook", "ai-infra-curriculum-dotgithub"]
 
 
 def target_repos() -> list[str]:
