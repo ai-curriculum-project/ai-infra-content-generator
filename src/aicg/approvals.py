@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .proposals import PARENT_REPO, parse_meta, proposal_meta
+from .proposals import PARENT_REPO, clean, issue_number, load, record, validate
 
 APPROVED_LABEL = "approved"
 APPLIED_LABEL = "applied"
@@ -60,12 +60,12 @@ def pr_url_from_outcome(outcome: dict[str, Any] | None) -> str | None:
 def _item_label(item: dict[str, Any]) -> str:
     ident = item.get("id") or "/".join(str(item[k]) for k in ("module", "slug") if item.get(k)) or "?"
     title = item.get("title")
-    return f"`{ident}`" + (f": {title}" if title else "")
+    return f"`{clean(ident, 100)}`" + (f": {clean(title, 200)}" if title else "")
 
 
 def content_issue(domain: str, domain_display: str, role_id: str, role_title: str, month: str,
                   validation: dict[str, Any], pr_url: str,
-                  delta: dict[str, Any] | None = None) -> tuple[str, str]:
+                  delta: dict[str, Any] | None = None) -> tuple[str, str, dict[str, Any]]:
     accepted = validation.get("accepted", {})
     sections = []
     for kind in ("modules", "exercises", "projects"):
@@ -79,19 +79,24 @@ def content_issue(domain: str, domain_display: str, role_id: str, role_title: st
         + f"\n\nEvidence, rationale, and the exact plan changes: {pr_url}\n\n"
         "**To approve**, add the `approved` label. The runner merges the PR, applies it to the "
         "curriculum plan, and writes the new content. **To decline**, close this issue; the PR "
-        "is closed too.\n\n"
-        + proposal_meta("content", domain=domain, role_id=role_id, month=month, pr_url=pr_url,
-                        delta=delta)
-        + "\n"
+        "is closed too.\n"
     )
-    return title, body
+    meta = {"kind": "content", "domain": domain, "role_id": role_id, "month": month,
+            "pr_url": pr_url, "delta": delta}
+    return title, body, meta
 
 
-def open_content_issue(gh: Gh, title: str, body: str, repo: str = PARENT_REPO) -> str:
+def open_content_issue(gh: Gh, title: str, body: str, meta: dict[str, Any], store: Path,
+                       repo: str = PARENT_REPO) -> str:
+    """Open the issue and record what it proposes (the approvals job trusts only this record)."""
     gh(["label", "create", CONTENT_LABEL, "-R", repo, "--color", "1D76DB",
         "--description", "Proposed curriculum additions from research", "--force"])
-    return gh(["issue", "create", "-R", repo, "--title", title, "--body", body,
-               "--label", CONTENT_LABEL]).strip()
+    url = gh(["issue", "create", "-R", repo, "--title", title, "--body", body,
+              "--label", CONTENT_LABEL]).strip()
+    number = issue_number(url)
+    if number is not None:
+        record(store, number, meta)
+    return url
 
 
 # --- planning the work ----------------------------------------------------------------
@@ -103,6 +108,7 @@ class Action:
     argv: list[str] | None = None
     fallback: list[str] | None = None  # tried when argv fails (e.g. squash when merges are off)
     python: Callable[[], None] | None = None
+    check: Callable[[Run], str | None] | None = None  # returns why to stop, or None
 
 
 @dataclass(frozen=True)
@@ -111,6 +117,10 @@ class Context:
     workspace: Path
     manifest_for: dict[str, Path]
     learning_repo_for: dict[tuple[str, str], str] = field(default_factory=dict)
+    orgs: dict[str, str] = field(default_factory=dict)  # domain -> GitHub org
+    roles: dict[str, set[str]] = field(default_factory=dict)  # domain -> role ids
+    store: Path | None = None  # the runner's proposal records
+    runner_login: str | None = None  # only issues this account opened are acted on
 
     @property
     def aicg(self) -> str:
@@ -135,7 +145,22 @@ def _author(ctx: Context, domain: str, role_id: str) -> Action:
 def _content_actions(meta: dict[str, Any], ctx: Context) -> list[Action]:
     domain, role_id, pr = meta["domain"], meta["role_id"], meta.get("pr_url", "")
     learning = ctx.learning_repo_for.get((domain, role_id))
-    actions = [Action("merge the proposal PR", ["gh", "pr", "merge", pr, "--merge", "--delete-branch"],
+    expected_branch = f"aicg/research/{meta['month']}/{role_id}"
+
+    def is_research_pr(run: Run) -> str | None:
+        rc, out = run(["gh", "pr", "view", pr, "--json", "headRefName,baseRefName,state"])
+        try:
+            info = json.loads(out) if rc == 0 else {}
+        except ValueError:
+            info = {}
+        if info.get("headRefName") != expected_branch or info.get("baseRefName") != "main":
+            return f"PR is not the research proposal branch {expected_branch} -> main"
+        if info.get("state") not in {"OPEN", "MERGED"}:
+            return f"PR is {info.get('state')}"
+        return None
+
+    actions = [Action("verify the proposal PR", check=is_research_pr),
+               Action("merge the proposal PR", ["gh", "pr", "merge", pr, "--merge", "--delete-branch"],
                       fallback=["gh", "pr", "merge", pr, "--squash", "--delete-branch"])]
     if learning:
         actions.append(Action("pull the learning repo",
@@ -238,6 +263,9 @@ def default_run(argv: list[str]) -> tuple[int, str]:
 
 
 def _execute(action: Action, run: Run) -> tuple[bool, str]:
+    if action.check is not None:
+        reason = action.check(run)
+        return reason is None, reason or ""
     if action.python is not None:
         try:
             action.python()
@@ -252,7 +280,7 @@ def _execute(action: Action, run: Run) -> tuple[bool, str]:
 
 def _approved_issues(gh: Gh, repo: str) -> list[dict[str, Any]]:
     raw = gh(["issue", "list", "-R", repo, "--label", APPROVED_LABEL, "--state", "open",
-              "--limit", "100", "--json", "number,title,body,labels"])
+              "--limit", "100", "--json", "number,title,author,labels"])
     issues = json.loads(raw or "[]")
     kinds = {CONTENT_LABEL, ROLE_LABEL}
     out = []
@@ -263,20 +291,33 @@ def _approved_issues(gh: Gh, repo: str) -> list[dict[str, Any]]:
     return out
 
 
+def _untrusted_reason(issue: dict[str, Any], ctx: Context) -> str | None:
+    if ctx.store is None:
+        return "no proposal store configured"
+    author = (issue.get("author") or {}).get("login", "")
+    if not ctx.runner_login or author.lower() != ctx.runner_login.lower():
+        return f"issue was opened by {author or 'unknown'}, not the runner"
+    return None
+
+
 def process_approvals(ctx: Context, *, gh: Gh, run: Run = default_run, apply: bool = False,
                       repo: str = PARENT_REPO) -> list[dict[str, Any]]:
     """Act on every open, approved, not-yet-applied proposal issue."""
     results: list[dict[str, Any]] = []
     for issue in _approved_issues(gh, repo):
         number = str(issue["number"])
-        meta = parse_meta(issue.get("body", ""))
-        actions = actions_for(meta, ctx) if meta else []
+        reason = _untrusted_reason(issue, ctx)
+        meta = None if reason else load(ctx.store, issue["number"])  # type: ignore[arg-type]
+        reason = reason or validate(meta, orgs=ctx.orgs, roles=ctx.roles,
+                                    learning_repo_for=ctx.learning_repo_for)
+        actions = [] if reason else actions_for(meta, ctx)  # type: ignore[arg-type]
         if not actions:
-            results.append({"issue": number, "status": "unparseable"})
+            reason = reason or "nothing to do for this proposal"
+            results.append({"issue": number, "status": "refused", "reason": reason})
             if apply:
                 gh(["issue", "comment", number, "-R", repo, "--body",
-                    "The runner couldn't read this proposal's details, so it took no action. "
-                    "Apply it by hand, or re-open it from a fresh run."])
+                    f"The runner refused to act on this: {reason}. Only proposals the runner "
+                    "opened itself, with a matching record, are applied automatically."])
                 gh(["issue", "edit", number, "-R", repo, "--remove-label", APPROVED_LABEL,
                     "--add-label", FAILED_LABEL])
             continue
@@ -307,18 +348,19 @@ def process_approvals(ctx: Context, *, gh: Gh, run: Run = default_run, apply: bo
     return results
 
 
-def close_declined(gh: Gh, *, run: Run = default_run, apply: bool = False,
+def close_declined(gh: Gh, ctx: Context, *, run: Run = default_run, apply: bool = False,
                    repo: str = PARENT_REPO) -> list[str]:
     """Close the proposal PR of every content issue that was closed without being applied."""
     raw = gh(["issue", "list", "-R", repo, "--label", CONTENT_LABEL, "--state", "closed",
-              "--limit", "100", "--json", "number,body,labels"])
+              "--limit", "100", "--json", "number,labels"])
     closed: list[str] = []
     for issue in json.loads(raw or "[]"):
         if APPLIED_LABEL in {lb.get("name") for lb in issue.get("labels", [])}:
             continue
-        pr = (parse_meta(issue.get("body", "")) or {}).get("pr_url")
-        if not pr:
+        meta = load(ctx.store, issue["number"]) if ctx.store else None
+        if validate(meta, orgs=ctx.orgs, roles=ctx.roles, learning_repo_for=ctx.learning_repo_for):
             continue
+        pr = meta["pr_url"]  # type: ignore[index]
         rc, state = run(["gh", "pr", "view", pr, "--json", "state", "--jq", ".state"])
         if rc == 0 and state.strip() == "OPEN":
             if apply:

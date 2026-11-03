@@ -1634,6 +1634,7 @@ def cmd_org_discover_roles(args: argparse.Namespace) -> int:
     from .domain_provision import _org_display
     from .domains import DEFAULT_DOMAIN, _runner_root
     from .orientation import load_stances
+    from .proposals import store_dir
     from .role_discovery import (
         known_names, open_proposals, research_agent, run_discovery, validate_candidates,
     )
@@ -1663,7 +1664,8 @@ def cmd_org_discover_roles(args: argparse.Namespace) -> int:
               f"{len(report['rejected'])} rejected")
         for item in report["rejected"]:
             print(f"  - rejected {item.get('title')!r}: {item['reason']}")
-        for result in open_proposals(report["accepted"], display, apply=args.apply):
+        for result in open_proposals(report["accepted"], display, apply=args.apply,
+                                     store=store_dir(_runner_root())):
             print(f"  + {result['status']}: {result['title']} {result.get('url', '')}".rstrip())
     return 0
 
@@ -1675,17 +1677,24 @@ def cmd_org_approvals(args: argparse.Namespace) -> int:
 
     from .domains import domain_config_path
 
+    from .proposals import store_dir
+
     family = _all_domain_manifests()
+    login = default_gh(["api", "user", "--jq", ".login"]).strip()
     ctx = Context(
         runner_dir=_runner_root(),
         workspace=resolve_workspace(args),
         manifest_for={d: domain_config_path(d) for d in family},
         learning_repo_for={(d, r.id): r.learning_repo for d, m in family.items() for r in m.roles},
+        orgs={d: m.org.lower() for d, m in family.items()},
+        roles={d: {r.id for r in m.roles} for d, m in family.items()},
+        store=store_dir(_runner_root()),
+        runner_login=login,
     )
     for result in process_approvals(ctx, gh=default_gh, apply=args.apply):
         steps = f" ({', '.join(result['steps'])})" if result.get("steps") else ""
         print(f"issue #{result['issue']}: {result['status']}{steps}")
-    for pr in close_declined(default_gh, apply=args.apply):
+    for pr in close_declined(default_gh, ctx, apply=args.apply):
         print(f"{'closed' if args.apply else 'would close'} declined proposal PR {pr}")
     if args.apply:  # announce each new undecided proposal exactly once
         import json as _json

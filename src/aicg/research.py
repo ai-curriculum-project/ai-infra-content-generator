@@ -603,9 +603,12 @@ def _open_approval_issue(
         for path in proposal_files or []:
             if path.endswith(CURRICULUM_PLAN_DELTA_FILTERED):
                 delta = json.loads(Path(path).read_text(encoding="utf-8"))
-        title, body = content_issue(domain, _org_display(manifest.org), role.id, role.title, month,
-                                    validation, pr_url, delta=delta)
-        return open_content_issue(default_gh, title, body)
+        title, body, meta = content_issue(domain, _org_display(manifest.org), role.id, role.title,
+                                          month, validation, pr_url, delta=delta)
+        from .domains import _runner_root
+        from .proposals import store_dir
+
+        return open_content_issue(default_gh, title, body, meta, store_dir(_runner_root()))
     except Exception as exc:  # noqa: BLE001 - best effort; the PR still exists
         return f"issue_failed: {type(exc).__name__}: {exc}"
 
