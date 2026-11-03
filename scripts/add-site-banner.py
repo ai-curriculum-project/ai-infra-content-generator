@@ -19,7 +19,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-SITE = "https://ai-infra-curriculum.github.io/"
+SITE = "https://ai-curriculum-project.github.io/"
 OPEN = "<!-- aicg:site-banner -->"
 CLOSE = "<!-- /aicg:site-banner -->"
 
