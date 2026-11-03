@@ -29,7 +29,8 @@
     "applied-ai-engineer": "AI feature design, production prompting, RAG in product, orchestration, product agents, guardrails",
     "rag-engineer": "Ingestion & chunking, embeddings, vector DBs & ANN tuning, learning-to-rank, hybrid retrieval, reranking",
     "senior-agentic-ai-engineer": "Agent systems from an architecture, eval & observability infra, multi-agent at scale, reliability, cost",
-    "agentic-systems-architect": "When not to use an agent, orchestration & memory architecture, eval harnesses, security, durable execution"
+    "agentic-systems-architect": "When not to use an agent, orchestration & memory architecture, eval harnesses, security, durable execution",
+    "forward-deployed-engineer": "Customer discovery, integrating into enterprise stacks, evals on customer data, demo→production, field feedback loops"
   },
   "quick_start_role": "agentic-ai-developer",
   "technologies": {

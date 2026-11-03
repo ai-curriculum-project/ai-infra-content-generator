@@ -1,0 +1,126 @@
+{
+  "_comment": "Editorial input for `aicg org render-orientation` (the per-role 'Your Relationship to the Model' orientation module). One stance per domain: the verb that defines the org relative to the model, what it owns, what it does not, and what it hands each sibling org. Facts about roles (titles, levels, repos) come from the manifests, not from here. A domain with path_levels=true uses levels as reading order, not seniority: roles in it are paired with the most senior role of each sibling, and siblings are paired with its counterpart_for[<sibling>] role.",
+  "order": [
+    "ai-startup",
+    "ai-governance",
+    "ai-engineering",
+    "ml-engineering",
+    "ai-infra"
+  ],
+  "scenario": {
+    "title": "One model upgrade, five orgs",
+    "intro": "Your vendor ships a new model version and deprecates the one in production in 90 days. Nobody owns this end to end. Here is how the work splits:",
+    "steps": {
+      "ai-startup": "Decides whether the upgrade is worth it now: cost, customer commitments, roadmap. Tells customers what changes and when.",
+      "ai-governance": "Re-runs risk and safety evaluations on the new version, updates the model inventory and documentation, and signs off (or blocks) the release.",
+      "ai-engineering": "Re-runs product evals, re-tunes prompts and tool definitions that regressed, and rolls the new model out behind a flag with a rollback path.",
+      "ml-engineering": "Re-validates any fine-tunes, distillations, or in-house models that depended on the old version, and benchmarks the new one on the team's own data.",
+      "ai-infra": "Stands up serving for the new version, capacity-plans GPUs or rate limits, shifts traffic gradually, and watches latency, error, and cost dashboards."
+    },
+    "close": "If any one of these is skipped, the upgrade fails in a way the others can't see from where they sit. Knowing which line is yours, and who owns the lines next to it, is the point of this module."
+  },
+  "domains": {
+    "ai-infra": {
+      "verb": "run",
+      "headline": "You **run** the model: you keep it available, fast, and affordable.",
+      "stance": "To you the model is a workload. It needs GPUs, memory, networks, storage, and a serving stack, and it has to meet latency, uptime, and cost targets under real traffic. You rarely change what the model says; you change whether, how fast, and at what cost it says it.",
+      "owns": [
+        "Compute: GPU/accelerator capacity, clusters, scheduling, and quotas",
+        "Serving: inference engines, batching, autoscaling, routing, and rollouts",
+        "Pipelines and platforms that training and evaluation jobs run on",
+        "Reliability: SLOs, observability, on-call, and incident response for AI systems",
+        "Cost: the infrastructure bill and the levers that move it"
+      ],
+      "not_owns": "What the model is trained on, what the product asks it to do, or whether a use is allowed. You give those owners the platform and the numbers they need to decide.",
+      "hands_to": {
+        "ml-engineering": "Training and fine-tuning clusters, experiment and artifact storage, and a path to production for the models they produce",
+        "ai-engineering": "Serving endpoints with known latency, throughput, rate limits, and cost per call, plus the telemetry to debug them",
+        "ai-governance": "Audit logs, access controls, data-residency guarantees, and evidence that controls actually run in production",
+        "ai-startup": "Unit economics: what each request, user, or customer costs to serve, and how that changes with scale"
+      }
+    },
+    "ml-engineering": {
+      "verb": "build & train",
+      "headline": "You **build and train** the model: you decide what it learns.",
+      "stance": "To you the model is an artifact you shape: data, architecture, training objective, fine-tuning, and evaluation against the behavior you want. You change what the model knows and how it behaves, and you are the one who can say why it got better or worse.",
+      "owns": [
+        "Training data: sourcing, curation, labeling, and quality",
+        "Training and fine-tuning: objectives, recipes, and experiments",
+        "Model-level evaluation: benchmarks, regressions, and comparisons",
+        "Model artifacts: versions, model cards, and lineage",
+        "Choosing between training, fine-tuning, distilling, or using a vendor model as-is"
+      ],
+      "not_owns": "The serving fleet, the product features built on top, or the final call on whether a use is acceptable. You hand off a model with evidence of what it can and can't do.",
+      "hands_to": {
+        "ai-infra": "Model artifacts with known resource profiles (memory, throughput, precision) and the training workloads they need to schedule",
+        "ai-engineering": "Models, fine-tunes, and embeddings with documented strengths, failure modes, and benchmark results on relevant tasks",
+        "ai-governance": "Data provenance, model cards, training-data documentation, and evaluation results they can audit",
+        "ai-startup": "An honest read on what's technically feasible, how long it takes, and what it costs to own a model versus renting one"
+      }
+    },
+    "ai-engineering": {
+      "verb": "build with",
+      "headline": "You **build with** the model: you turn it into products and agents people use.",
+      "stance": "To you the model is a component, usually one you didn't train and can't change. You shape its behavior from the outside with prompts, context, retrieval, tools, and orchestration, and you're responsible for what it does inside your product.",
+      "owns": [
+        "Prompts, context, and retrieval that steer model behavior",
+        "Tools, agents, and multi-step orchestration",
+        "Product-level evaluation: does the feature actually work for users?",
+        "Guardrails and fallbacks in the application layer",
+        "Choosing which model to call for which job"
+      ],
+      "not_owns": "Training the model, operating the serving fleet, or setting organizational policy. You work inside those constraints and report back when they don't fit the product.",
+      "hands_to": {
+        "ai-infra": "Traffic shapes, latency budgets, and model-mix requirements, so capacity and routing match how the product actually calls models",
+        "ml-engineering": "Real failure cases and task data from production, which tell them where a fine-tune or a different model would actually help",
+        "ai-governance": "System descriptions, eval results, and guardrail designs for each AI feature, plus incident reports when something goes wrong",
+        "ai-startup": "Working features, honest demos, and a clear picture of what the product can promise customers today"
+      }
+    },
+    "ai-governance": {
+      "verb": "govern & assure",
+      "headline": "You **govern and assure** the model: you decide whether a use is acceptable and prove it stays that way.",
+      "stance": "To you the model is a risk to be understood and managed: to people, to the organization, and to compliance. You don't usually build or run it. You set the rules it operates under, test it adversarially, and hold the evidence that it behaves as claimed.",
+      "owns": [
+        "Policy: acceptable use, risk tiers, and approval gates",
+        "Risk and impact assessments mapped to frameworks (NIST AI RMF, ISO/IEC 42001, EU AI Act)",
+        "Independent evaluation, red-teaming, and safety testing",
+        "Security of AI systems: prompt injection, data leakage, and supply chain",
+        "Model inventory, documentation, audit, and incident review"
+      ],
+      "not_owns": "The implementation. You define what 'safe enough' means and verify it; the builders and operators make it so.",
+      "hands_to": {
+        "ai-infra": "Control requirements (logging, access, retention, residency) and the evidence they need to produce",
+        "ml-engineering": "Data-use rules, documentation standards, and the risk-based evaluation bar a model must clear",
+        "ai-engineering": "Risk tiers, guardrail requirements, and red-team findings to fix before (and after) launch",
+        "ai-startup": "A defensible position for customers, regulators, and investors, and early warning on uses that would sink the company"
+      }
+    },
+    "ai-startup": {
+      "verb": "build a company around",
+      "headline": "You **build a company around** the model: you decide what it's for and who pays for it.",
+      "stance": "To you the model is a capability inside a business. You care whether it solves a problem customers will pay for, at a cost that leaves margin, with a story investors and regulators will accept. You make the calls about what to build, when, and with what money.",
+      "owns": [
+        "The problem, the customer, and the reason anyone pays",
+        "Build-versus-buy and which bets to make with limited runway",
+        "Pricing and margin, given what the model costs to run",
+        "Hiring: which of the other four orgs' roles you need, and when",
+        "Commitments to customers, investors, and regulators"
+      ],
+      "not_owns": "The technical details of any single layer. You need enough fluency to ask the right questions of each and to know when an answer doesn't add up.",
+      "hands_to": {
+        "ai-infra": "Growth forecasts, cost targets, and reliability commitments that set the platform's budget",
+        "ml-engineering": "The problems worth owning a model for, and the business case for the data and compute it takes",
+        "ai-engineering": "Prioritized customer problems, what's been promised, and what 'good enough to ship' means for this market",
+        "ai-governance": "The company's risk appetite, target markets, and customer commitments that set the compliance bar"
+      },
+      "path_levels": true,
+      "counterpart_for": {
+        "ai-infra": "cto",
+        "ml-engineering": "cto",
+        "ai-engineering": "cpo",
+        "ai-governance": "startup-operations-governance"
+      }
+    }
+  }
+}

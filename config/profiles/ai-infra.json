@@ -18,7 +18,8 @@
       "roles": [
         "mlops",
         "ml-platform",
-        "performance"
+        "performance",
+        "inference-engineer"
       ]
     },
     {
@@ -54,7 +55,8 @@
     "team-lead": "Technical strategy & roadmaps, team building, ADRs, incident & performance management",
     "senior-architect": "Cross-org architecture alignment, enterprise standards, multi-year roadmaps, executive communication",
     "principal-engineer": "Deep technical expertise, extreme-scale distributed systems, novel infra solutions, mentorship",
-    "principal-architect": "Company-wide strategy, multi-year roadmaps, technology selection, architecture governance"
+    "principal-architect": "Company-wide strategy, multi-year roadmaps, technology selection, architecture governance",
+    "inference-engineer": "Serving engines (vLLM, TensorRT-LLM, SGLang), batching & KV cache, quantization, routing, GPU autoscaling, latency/cost SLOs"
   },
   "track_note": "All 11 infrastructure tracks are actively maintained. Work focuses on depth, runtime validation, and human review. See the [Career Progression Guide](https://github.com/ai-infra-curriculum/.github/blob/main/CAREER_PROGRESSION.md) for role and skill mapping, and the [Curriculum Cross-Reference](https://github.com/ai-infra-curriculum/.github/blob/main/CURRICULUM_CROSS_REFERENCE.md) for how modules connect.",
   "quick_start_role": "junior-engineer",

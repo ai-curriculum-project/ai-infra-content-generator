@@ -210,6 +210,21 @@
       "level": 60,
       "learning_repo": "ai-infra-principal-architect-learning",
       "solution_repo": "ai-infra-principal-architect-solutions"
+    },
+    {
+      "id": "inference-engineer",
+      "title": "AI Inference Engineer",
+      "level": 35,
+      "learning_repo": "ai-infra-inference-engineer-learning",
+      "solution_repo": "ai-infra-inference-engineer-solutions",
+      "aliases": [
+        "Inference Engineer",
+        "ML Inference Engineer",
+        "LLM Serving Engineer",
+        "Model Serving Engineer",
+        "Inference Optimization Engineer",
+        "AI Inference Platform Engineer"
+      ]
     }
   ]
 }

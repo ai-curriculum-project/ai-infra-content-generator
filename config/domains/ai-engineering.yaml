@@ -228,6 +228,21 @@
         "Multi-Agent Systems Architect",
         "Principal AI Engineer - Agents"
       ]
+    },
+    {
+      "id": "forward-deployed-engineer",
+      "title": "Forward Deployed AI Engineer",
+      "level": 35,
+      "learning_repo": "forward-deployed-engineer-learning",
+      "solution_repo": "forward-deployed-engineer-solutions",
+      "aliases": [
+        "Forward Deployed Engineer",
+        "Forward Deployed Software Engineer",
+        "AI Deployment Engineer",
+        "AI Solutions Engineer",
+        "Customer AI Engineer",
+        "Applied AI Solutions Architect"
+      ]
     }
   ]
 }
