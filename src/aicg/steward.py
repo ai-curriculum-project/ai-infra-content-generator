@@ -75,7 +75,7 @@ def steward_run(
 
     repo_reports: list[dict[str, Any]] = []
     for repo in manifest.repo_names:
-        repo_path = workspace / repo
+        repo_path = manifest.repo_path(workspace, repo)
         repo_reports.append(
             steward_repo(
                 repo=repo,

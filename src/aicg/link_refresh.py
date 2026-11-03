@@ -342,15 +342,19 @@ def handle_refresh_links_item(
     wayback_fetcher: WaybackFetcher = default_wayback_fetcher,
     canonical_sources: CanonicalSourceRegistry | None = None,
     open_pr: bool = True,
+    repo_path: Path | None = None,
 ) -> dict[str, Any]:
     """Resolve and apply replacements for one ``refresh_links`` item.
+
+    ``repo_path`` is the repo's local checkout; callers with a manifest pass
+    ``manifest.repo_path(...)`` (``.github`` doesn't live at ``workspace/.github``).
 
     Returns a result dict describing what happened. Always opens a PR
     when at least one URL was replaced; never modifies main directly.
     """
     repo = item.get("repo", "")
     path_rel = item.get("path", "")
-    repo_path = workspace / repo
+    repo_path = repo_path or workspace / repo
     target = repo_path / path_rel
     result: dict[str, Any] = {
         "schema_version": 1,

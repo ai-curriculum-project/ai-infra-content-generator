@@ -75,7 +75,7 @@ def sync_repositories(
         workspace.mkdir(parents=True, exist_ok=True)
 
     for repo in manifest.repo_names:
-        repo_path = workspace / repo
+        repo_path = manifest.repo_path(workspace, repo)
         remote = manifest.remote_for(repo)
         if repo_path.exists():
             dirty = is_git_dirty(repo_path)
@@ -112,7 +112,7 @@ def plan_monthly_release(
     tag = release_tag(manifest, today or date.today())
     actions: list[dict[str, Any]] = []
     for repo in manifest.release_repo_names:
-        repo_path = workspace / repo
+        repo_path = manifest.repo_path(workspace, repo)
         if not repo_path.exists():
             actions.append(
                 {
@@ -240,7 +240,7 @@ def run_org_audit(
     repo_reports: list[dict[str, Any]] = []
 
     for repo in manifest.solution_repo_names:
-        repo_path = workspace / repo
+        repo_path = manifest.repo_path(workspace, repo)
         if not repo_path.exists():
             repo_reports.append({"repo": repo, "status": "missing", "path": str(repo_path)})
             continue
@@ -577,7 +577,7 @@ def _process_one_item(
     item: dict[str, Any],
 ) -> dict[str, Any]:
     """Drive a single work item from ready → merged (or to a failure)."""
-    repo_path = workspace / item["repo"]
+    repo_path = manifest.repo_path(workspace, item["repo"])
     result = {
         "schema_version": 1,
         "generated_at": utc_now(),
@@ -605,7 +605,9 @@ def _process_one_item(
         # crashed the urllib fetcher 15 hours in a row).
         try:
             refresh_result = handle_refresh_links_item(
-                workspace=workspace, item=item
+                workspace=workspace,
+                item=item,
+                repo_path=manifest.repo_path(workspace, item.get("repo", "")),
             )
         except Exception as exc:  # noqa: BLE001 - intentional broad catch at boundary
             refresh_result = {
@@ -2292,7 +2294,7 @@ def _resolve_cross_repo_target(
     if work_type == "org_profile_stale":
         return {
             "repo": ".github",
-            "repo_path": workspace / ".github",
+            "repo_path": manifest.repo_path(workspace, ".github"),
             "target_file": item.get("path") or "profile/README.md",
         }
 
@@ -2302,7 +2304,7 @@ def _resolve_cross_repo_target(
             return None
         return {
             "repo": repo,
-            "repo_path": workspace / repo,
+            "repo_path": manifest.repo_path(workspace, repo),
             "target_file": (item.get("path") or "").split("#", 1)[0],
         }
 

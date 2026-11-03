@@ -144,7 +144,7 @@ def _summarize_repo(
     workspace: Path,
     config: DiscussionsConfig,
 ) -> dict[str, Any]:
-    repo_path = workspace / repo
+    repo_path = manifest.repo_path(workspace, repo)
     if not repo_path.exists():
         return {
             "repo": repo,

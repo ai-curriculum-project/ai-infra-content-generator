@@ -53,7 +53,7 @@ def dependabot_run(
 
     repo_reports: list[dict[str, Any]] = []
     for repo in manifest.repo_names:
-        repo_path = workspace / repo
+        repo_path = manifest.repo_path(workspace, repo)
         if not repo_path.exists():
             continue
         prs = list_dependabot_prs(repo_path)

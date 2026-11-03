@@ -210,3 +210,54 @@ def test_extra_repo_org_override_with_hardcoded_remote(tmp_path):
         encoding="utf-8",
     )
     assert load_manifest(path).remote_for("runner") == "git@github.com:parent-org/runner.git"
+
+
+def _dotgithub_manifest(tmp_path, org="AI-Infra-Curriculum", extra=None):
+    import json
+
+    from aicg.org_config import load_manifest
+
+    path = tmp_path / f"{org}.json"
+    path.write_text(
+        json.dumps(
+            {
+                "org": org,
+                "default_remote": "git@github.com:{org}/{repo}.git",
+                "roles": [
+                    {"id": "r", "title": "R", "level": 10, "learning_repo": "r-learning",
+                     "solution_repo": "r-solutions"}
+                ],
+                "extra_repos": extra if extra is not None else [{"name": ".github", "kind": "org-profile"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return load_manifest(path)
+
+
+def test_dotgithub_gets_a_per_org_local_dir(tmp_path):
+    a = _dotgithub_manifest(tmp_path, "AI-Infra-Curriculum")
+    b = _dotgithub_manifest(tmp_path, "ml-engineering-curriculum")
+    assert a.local_dir(".github") == "ai-infra-curriculum-dotgithub"
+    assert b.local_dir(".github") == "ml-engineering-curriculum-dotgithub"
+    assert a.repo_path(tmp_path, ".github") != b.repo_path(tmp_path, ".github")
+
+
+def test_other_repos_keep_their_name_as_local_dir(tmp_path):
+    m = _dotgithub_manifest(tmp_path)
+    assert m.local_dir("r-learning") == "r-learning"
+    assert m.repo_path(tmp_path, "r-learning") == tmp_path / "r-learning"
+
+
+def test_extra_repo_local_dir_override(tmp_path):
+    m = _dotgithub_manifest(tmp_path, extra=[{"name": ".github", "kind": "org-profile", "local_dir": "profile-repo"}])
+    assert m.local_dir(".github") == "profile-repo"
+
+
+def test_sync_clones_dotgithub_into_per_org_dir(tmp_path):
+    from aicg.org_runner import sync_repositories
+
+    m = _dotgithub_manifest(tmp_path)
+    report = sync_repositories(m, tmp_path / "ws", dry_run=True)
+    clone = next(a for a in report["actions"] if a["repo"] == ".github")
+    assert str(clone["command"]).endswith("/ws/ai-infra-curriculum-dotgithub")

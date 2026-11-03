@@ -55,7 +55,7 @@ def rebrand_run(
     target_repos = list(repos) if repos else list(manifest.repo_names)
     outcomes: list[dict[str, Any]] = []
     for repo in target_repos:
-        repo_path = workspace / repo
+        repo_path = manifest.repo_path(workspace, repo)
         if not repo_path.exists():
             outcomes.append({"repo": repo, "status": "skipped", "reason": "missing"})
             continue
