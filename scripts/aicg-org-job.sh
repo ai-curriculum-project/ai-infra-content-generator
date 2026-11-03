@@ -706,8 +706,23 @@ if files and all(ok.fullmatch(f) for f in files) and re.fullmatch(r'[0-9a-f]{40}
       if ( cd "$SITE_DIR" && python3 scripts/export-data.py && python3 build.py ) >/dev/null; then
         git -C "$SITE_DIR" add -- index.html data/curricula.json
         if ! git -C "$SITE_DIR" diff --cached --quiet; then
+          # The site repo's main is protected (PRs only, admins included), so the
+          # refresh goes through a PR that the runner merges.
+          SITE_BRANCH="aicg/publish/$(date +%Y-%m-%d-%H%M)"
+          SITE_REPO="ai-curriculum-project/ai-curriculum-project.github.io"
+          git -C "$SITE_DIR" checkout -q -b "$SITE_BRANCH"
           git -C "$SITE_DIR" commit -q -m "data: refresh from the curriculum manifests (aicg publish)"
-          git -C "$SITE_DIR" push -q origin HEAD || log "umbrella site push failed"
+          if git -C "$SITE_DIR" push -q -u origin "$SITE_BRANCH" \
+             && gh pr create --repo "$SITE_REPO" --head "$SITE_BRANCH" \
+                  --title "data: refresh from the curriculum manifests" \
+                  --body "Weekly refresh by the runner's publish job (role lists, module counts)." >/dev/null \
+             && gh pr merge "$SITE_BRANCH" --repo "$SITE_REPO" --merge --delete-branch >/dev/null; then
+            log "umbrella site refreshed"
+          else
+            log "umbrella site refresh PR failed; branch $SITE_BRANCH left for review"
+          fi
+          git -C "$SITE_DIR" checkout -q main
+          git -C "$SITE_DIR" pull -q --ff-only || true
         fi
         bash "$SITE_DIR/scripts/publish-org-sites.sh" | grep -v "unchanged" || true
       else
