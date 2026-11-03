@@ -158,3 +158,55 @@ def test_curriculum_manifest_minimal_synth(tmp_path: Path) -> None:
     assert junior is not None
     assert m.find_module("junior-engineer", "mod-001") is not None
     assert m.find_module("junior-engineer", "mod-999") is None
+
+
+def test_extra_repo_org_override_changes_remote(tmp_path):
+    import json
+
+    from aicg.org_config import load_manifest
+
+    path = tmp_path / "m.json"
+    path.write_text(
+        json.dumps(
+            {
+                "org": "child-org",
+                "default_remote": "git@github.com:{org}/{repo}.git",
+                "roles": [
+                    {"id": "r", "title": "R", "level": 10, "learning_repo": "r-learning",
+                     "solution_repo": "r-solutions"}
+                ],
+                "extra_repos": [
+                    {"name": "runner", "kind": "runner", "org": "parent-org"},
+                    {"name": "local-extra", "kind": "extra"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest = load_manifest(path)
+    assert manifest.remote_for("runner") == "git@github.com:parent-org/runner.git"
+    assert manifest.remote_for("local-extra") == "git@github.com:child-org/local-extra.git"
+    assert manifest.remote_for("r-learning") == "git@github.com:child-org/r-learning.git"
+
+
+def test_extra_repo_org_override_with_hardcoded_remote(tmp_path):
+    import json
+
+    from aicg.org_config import load_manifest
+
+    path = tmp_path / "m.json"
+    path.write_text(
+        json.dumps(
+            {
+                "org": "Child-Org",
+                "default_remote": "git@github.com:Child-Org/{repo}.git",
+                "roles": [
+                    {"id": "r", "title": "R", "level": 10, "learning_repo": "r-learning",
+                     "solution_repo": "r-solutions"}
+                ],
+                "extra_repos": [{"name": "runner", "kind": "runner", "org": "parent-org"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert load_manifest(path).remote_for("runner") == "git@github.com:parent-org/runner.git"

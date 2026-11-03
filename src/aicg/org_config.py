@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -46,6 +48,9 @@ class ExtraRepoConfig:
     name: str
     kind: str
     release: bool = False
+    # GitHub org that owns the repo when it isn't the manifest's org (shared
+    # repos such as the runner live in the parent org).
+    org: str | None = None
 
 
 @dataclass(frozen=True)
@@ -111,7 +116,12 @@ class OrgManifest:
         return list(dict.fromkeys(names))
 
     def remote_for(self, repo: str) -> str:
-        return self.default_remote.format(org=self.org, repo=repo)
+        url = self.default_remote.format(org=self.org, repo=repo)
+        owner = next((e.org for e in self.extra_repos if e.name == repo and e.org), None)
+        if owner is None:
+            return url
+        # default_remote may hard-code the org rather than use {org}.
+        return re.sub(re.escape(self.org), owner, url, count=1, flags=re.IGNORECASE)
 
     def role_for_learning_repo(self, repo: str) -> RoleConfig | None:
         return next((role for role in self.roles if role.learning_repo == repo), None)
@@ -166,6 +176,7 @@ def load_manifest(path: Path | None = None) -> OrgManifest:
             name=item["name"],
             kind=item.get("kind", "extra"),
             release=bool(item.get("release", False)),
+            org=item.get("org"),
         )
         for item in raw.get("extra_repos", [])
     )
