@@ -345,6 +345,10 @@ print(next((r['learning_repo'] for r in d['roles'] if r['id']=='$ROLE'),''))" 2>
 import json
 d=json.load(open('$MANIFEST'))
 print(next((r['learning_repo'] for r in d['roles'] if r['id']=='$ROLE'),''))" 2>/dev/null || true)
+      GR_SREPO=$(python3 -c "
+import json
+d=json.load(open('$MANIFEST'))
+print(next((r.get('solution_repo') or '' for r in d['roles'] if r['id']=='$ROLE'),''))" 2>/dev/null || true)
       if [[ -n "$GR_LREPO" && ! -s "$WORKSPACE/$GR_LREPO/.aicg/curriculum-plan.json" ]]; then
         log "no plan for $ROLE; seeding before generate"
         # generate-role holds the org-job lock here, so tell the nested
@@ -358,9 +362,17 @@ print(next((r['learning_repo'] for r in d['roles'] if r['id']=='$ROLE'),''))" 2>
       # Commit + push the authored content. generate-learning edits the working
       # tree in place and leaves committing to the caller — without this the
       # content never reaches GitHub (the "no commits" symptom) and the dirty
-      # tree makes the next sync dirty_skip.
-      if [[ -n "$GR_LREPO" && -d "$WORKSPACE/$GR_LREPO/.git" ]]; then
-        ( cd "$WORKSPACE/$GR_LREPO"
+      # tree makes the next sync dirty_skip. execute-plan also scaffolds the
+      # solutions repo, so commit that too (it used to sit uncommitted).
+      for GR_REPO in "$GR_LREPO" "$GR_SREPO"; do
+      [[ -n "$GR_REPO" ]] || continue
+      if [[ "$GR_REPO" == "$GR_SREPO" ]]; then
+        GR_MSG="content: scaffold $ROLE solution modules (aicg generate-role)"
+      else
+        GR_MSG="content: author $ROLE learning modules (aicg generate-role)"
+      fi
+      if [[ -d "$WORKSPACE/$GR_REPO/.git" ]]; then
+        ( cd "$WORKSPACE/$GR_REPO"
           # Guarantee runner scratch is never committed: older repos don't
           # gitignore .aicg/, so add -A would otherwise stage local state.
           # Self-heal the ignore rule so add -A only stages curriculum files.
@@ -370,10 +382,11 @@ print(next((r['learning_repo'] for r in d['roles'] if r['id']=='$ROLE'),''))" 2>
           git add -A 2>/dev/null || true
           if ! git diff --cached --quiet 2>/dev/null; then
             git -c user.email="aicg@veriswarm.ai" -c user.name="AICG Runner" \
-              commit -q -m "content: author $ROLE learning modules (aicg generate-role)" \
-              && git push origin HEAD && echo "  pushed authored content for $ROLE"
-          fi ) || log "content commit/push failed for $ROLE"
+              commit -q -m "$GR_MSG" \
+              && git push origin HEAD && echo "  pushed $GR_REPO for $ROLE"
+          fi ) || log "content commit/push failed for $GR_REPO"
       fi
+      done
       # Observability: report the outcome by observable state (modules present
       # or not) — no agent-output parsing. One push per role-fill, so the
       # daily fill timer yields ~1 notify/domain/day, not spam.
