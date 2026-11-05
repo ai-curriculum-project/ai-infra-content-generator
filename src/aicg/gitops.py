@@ -42,11 +42,36 @@ def ensure_branch(repo_path: Path, branch: str) -> bool:
 
 
 def stage_all_except_runner_state(repo_path: Path) -> int:
-    """``git add --all``, minus the runner's own ``.aicg/`` state. Returns git's exit code."""
-    return subprocess.run(
-        ["git", "-C", str(repo_path), "add", "--all", "--", ".", ":(exclude).aicg"],
-        capture_output=True, text=True, check=False,
-    ).returncode
+    """``git add --all``, minus the runner's own ``.aicg/`` state. Returns git's exit code.
+
+    Stage everything, then unstage ``.aicg``. An exclude pathspec
+    (``-- . ':(exclude).aicg'``) looks equivalent, but when ``.aicg/`` is
+    gitignored git stages the files and still exits 1 ("paths are ignored").
+    """
+    for args in (["add", "--all"], ["reset", "-q", "--", ".aicg"]):
+        rc = subprocess.run(
+            ["git", "-C", str(repo_path), *args], capture_output=True, text=True, check=False,
+        ).returncode
+        if rc != 0:
+            return rc
+    return 0
+
+
+def discard_work_and_checkout_main(repo_path: Path) -> None:
+    """Throw away an abandoned work item's edits and return to ``main``.
+
+    A plain ``checkout main`` carries staged and unstaged edits along, leaving
+    ``main`` dirty, and sync then skips the clone (``dirty_skip``) until
+    someone cleans it by hand. The runner's ``.aicg/`` state is kept.
+    """
+    for args in (
+        ["reset", "-q", "--hard"],
+        ["clean", "-fdq", "-e", ".aicg"],
+        ["checkout", "-q", "main"],
+    ):
+        subprocess.run(
+            ["git", "-C", str(repo_path), *args], capture_output=True, text=True, check=False,
+        )
 
 
 def select_work_item(

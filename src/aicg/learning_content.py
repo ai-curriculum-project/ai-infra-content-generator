@@ -150,6 +150,7 @@ def generate_role_learning_content(
     generated: list[str] = []
     failed: list[str] = []
     skipped: list[str] = []
+    timed_out: list[str] = []
     deferred: str | None = None
 
     for mod in modules:
@@ -186,6 +187,12 @@ def generate_role_learning_content(
             break
         if result.returncode == 0:
             generated.append(mod["id"])
+        elif module_is_authored(learning_path / "lessons" / mod["id"]):
+            # The agent wrote the chapters, then hit the hard time limit
+            # (exit 124/137) while wrapping up. The content is there; any
+            # chapter cut short is picked up by the depth audit's thin_module.
+            generated.append(mod["id"])
+            timed_out.append(mod["id"])
         else:
             failed.append(mod["id"])
 
@@ -198,6 +205,7 @@ def generate_role_learning_content(
         "modules_generated": generated,
         "modules_failed": failed,
         "modules_skipped": skipped,
+        "modules_timed_out": timed_out,
         "deferred_module": deferred,
     }
     write_json(state_root / LEARNING_CONTENT_REPORT, report)

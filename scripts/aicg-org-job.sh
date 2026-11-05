@@ -353,7 +353,8 @@ print(next((r['learning_repo'] for r in d['roles'] if r['id']=='$ROLE'),''))" 2>
           --manifest "$MANIFEST" --state-dir "$STATE_DIR" || log "seed step failed/limited for $ROLE"
       fi
       run_aicg_org execute-plan --role "$ROLE" 2>&1 | tail -3 || true
-      run_aicg_org generate-learning --role "$ROLE" || true
+      # Whole modules run 15-25 min; the 20-min default cut most off mid-wrap-up.
+      AICG_AGENT_TIMEOUT="${AICG_AGENT_TIMEOUT:-1800}" run_aicg_org generate-learning --role "$ROLE" || true
       # Commit + push the authored content. generate-learning edits the working
       # tree in place and leaves committing to the caller — without this the
       # content never reaches GitHub (the "no commits" symptom) and the dirty

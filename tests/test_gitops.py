@@ -186,3 +186,67 @@ def test_stage_excludes_runner_state(tmp_path):
     staged = subprocess.run(["git", "-C", str(repo), "diff", "--cached", "--name-only"],
                             capture_output=True, text=True, check=True).stdout.split()
     assert staged == ["README.md"]
+
+
+def _git(repo, *args):
+    import subprocess
+
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True,
+                          check=True).stdout
+
+
+def _repo_with_ignored_state(tmp_path):
+    repo = tmp_path / "r"
+    (repo / ".aicg" / "run").mkdir(parents=True)
+    _git(repo, "init", "-q", "-b", "main")
+    (repo / ".gitignore").write_text(".aicg/\n")
+    (repo / ".aicg" / "run" / "prompt.md").write_text("prompt")
+    (repo / "README.md").write_text("v1\n")
+    _git(repo, "add", ".gitignore", "README.md")
+    _git(repo, "-c", "user.email=a@b", "-c", "user.name=a", "commit", "-q", "-m", "init")
+    return repo
+
+
+def test_stage_succeeds_when_runner_state_is_gitignored(tmp_path):
+    # `git add -- . ':(exclude).aicg'` exits 1 here even though it staged the
+    # change, which marked good content as "git add failed".
+    from aicg.gitops import stage_all_except_runner_state
+
+    repo = _repo_with_ignored_state(tmp_path)
+    (repo / "README.md").write_text("v2\n")
+    assert stage_all_except_runner_state(repo) == 0
+    assert _git(repo, "diff", "--cached", "--name-only").split() == ["README.md"]
+
+
+def test_discard_work_returns_to_a_clean_main(tmp_path):
+    from aicg.gitops import discard_work_and_checkout_main
+
+    repo = _repo_with_ignored_state(tmp_path)
+    _git(repo, "checkout", "-q", "-b", "aicg/work")
+    (repo / "README.md").write_text("half-written\n")
+    (repo / "new.md").write_text("agent file\n")
+    _git(repo, "add", "README.md")
+
+    discard_work_and_checkout_main(repo)
+
+    assert _git(repo, "branch", "--show-current").strip() == "main"
+    assert _git(repo, "status", "--porcelain") == ""
+    assert (repo / ".aicg" / "run" / "prompt.md").exists()  # runner state kept
+
+
+def test_failed_cross_repo_item_parks_its_edits_and_leaves_main_clean(tmp_path):
+    from aicg.org_runner import _set_aside_work
+
+    repo = _repo_with_ignored_state(tmp_path)
+    _git(repo, "checkout", "-q", "-b", "aicg/work")
+    (repo / "README.md").write_text("agent content\n")
+    _git(repo, "add", "README.md")  # staged, like a failed commit step leaves it
+    item = {"work_id": "learning-placeholder-exercise-x"}
+
+    _set_aside_work(repo, item)
+
+    assert _git(repo, "branch", "--show-current").strip() == "main"
+    assert _git(repo, "status", "--porcelain") == ""
+    parked = item["parked_branch"]
+    assert parked.startswith("aicg/parked/")
+    assert _git(repo, "show", f"{parked}:README.md") == "agent content\n"

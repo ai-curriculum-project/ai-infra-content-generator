@@ -2183,7 +2183,7 @@ def _handle_cross_repo_item(
 
     agent_result = run_agent_command(command, cwd=repo_path)
     if agent_result.limit_reached:
-        _checkout_main(repo_path)
+        _set_aside_work(repo_path, item)
         item["status"] = "deferred"
         item["updated_at"] = utc_now()
         item["defer_reason"] = "agent_subscription_limit"
@@ -2201,7 +2201,7 @@ def _handle_cross_repo_item(
     )
     has_changes = bool(status.stdout.strip())
     if not has_changes:
-        _checkout_main(repo_path)
+        _set_aside_work(repo_path, item)
         item["status"] = "failed_permanently" if agent_result.returncode != 0 else "no_changes"
         item["updated_at"] = utc_now()
         item["last_failure"] = (
@@ -2214,7 +2214,7 @@ def _handle_cross_repo_item(
 
     msg = f"aicg: {work_type} {subtype} for {item.get('path', item['work_id'])}"
     if stage_all_except_runner_state(repo_path) != 0:
-        _checkout_main(repo_path)
+        _set_aside_work(repo_path, item)
         item["status"] = "failed_permanently"
         item["last_failure"] = "git add failed"
         result["status"] = "failed_permanently"
@@ -2226,7 +2226,7 @@ def _handle_cross_repo_item(
     ):
         c = subprocess.run(args, capture_output=True, text=True, check=False)
         if c.returncode != 0:
-            _checkout_main(repo_path)
+            _set_aside_work(repo_path, item)
             item["status"] = "failed_permanently"
             item["last_failure"] = f"git step `{args[3]}` failed: {c.stderr[-200:]}"
             result["status"] = "failed_permanently"
@@ -2250,7 +2250,7 @@ def _handle_cross_repo_item(
         capture_output=True, text=True, check=False,
     )
     if pr_create.returncode != 0:
-        _checkout_main(repo_path)
+        _set_aside_work(repo_path, item)
         item["status"] = "failed_permanently"
         item["last_failure"] = f"gh pr create failed: {pr_create.stderr[-200:]}"
         result["status"] = "failed_permanently"
@@ -2641,6 +2641,25 @@ def _commit_and_push_pr_response(
                 "stderr_tail": c.stderr[-400:],
             }
     return {"status": "pushed", "message": msg}
+
+
+def _set_aside_work(repo_path: Path, item: dict[str, Any]) -> None:
+    """Leave ``main`` clean after a cross-repo item fails partway.
+
+    A plain ``checkout main`` carried the agent's edits onto ``main``, and sync
+    then skipped the clone as dirty until someone cleaned it by hand. Park the
+    edits on an ``aicg/parked/...`` branch so they can be recovered; if even
+    that fails, discard them.
+    """
+    from .gitops import GitOpsError, discard_work_and_checkout_main, park_changes
+
+    try:
+        branch = park_changes(repo_path, item["work_id"])
+    except GitOpsError:
+        branch = None
+    if branch:
+        item["parked_branch"] = branch
+    discard_work_and_checkout_main(repo_path)
 
 
 def _checkout_main(repo_path: Path) -> None:
