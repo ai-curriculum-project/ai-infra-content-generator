@@ -1013,10 +1013,11 @@ def execute_curriculum_plan(
 
     workspace = workspace.resolve()
     learning_path = workspace / role.learning_repo
-    solution_path = workspace / role.solution_repo
-    if not learning_path.exists() or not solution_path.exists():
+    # Single-repo curricula (the startup domain) have no solutions repo.
+    solution_path = workspace / role.solution_repo if role.solution_repo else None
+    if not learning_path.exists() or (solution_path and not solution_path.exists()):
         raise CurriculumPlanError(
-            f"Paired repos for {role_id!r} are not on disk. Bootstrap them first."
+            f"Repos for {role_id!r} are not on disk. Bootstrap them first."
         )
 
     plan_path = plan_path or learning_path / ".aicg" / "curriculum-plan.json"
@@ -1073,7 +1074,7 @@ def execute_curriculum_plan(
         "role_id": role_id,
         "plan_path": str(plan_path),
         "learning_path": str(learning_path),
-        "solution_path": str(solution_path),
+        "solution_path": str(solution_path) if solution_path else None,
         "modules_created": modules_created,
         "modules_skipped": modules_skipped,
         "projects_created": projects_created,
@@ -1100,7 +1101,7 @@ def _load_curriculum_plan(path: Path) -> dict[str, Any]:
 def _scaffold_module(
     module: dict[str, Any],
     learning_path: Path,
-    solution_path: Path,
+    solution_path: Path | None,
     overwrite: bool,
 ) -> dict[str, Any]:
     module_id = module.get("id") or ""
@@ -1115,10 +1116,10 @@ def _scaffold_module(
     hours = module.get("hours")
 
     learning_mod = learning_path / "lessons" / module_id
-    solution_mod = solution_path / "modules" / module_id
+    solution_mod = solution_path / "modules" / module_id if solution_path else None
 
     files_written: list[str] = []
-    created = not learning_mod.exists() and not solution_mod.exists()
+    created = not learning_mod.exists() and not (solution_mod and solution_mod.exists())
     if not created and not overwrite:
         return {
             "module_id": module_id,
@@ -1173,6 +1174,9 @@ def _scaffold_module(
             )
         )
 
+    if solution_mod is None:
+        return {"module_id": module_id, "created": True, "files_written": files_written}
+
     # Solutions side mirror.
     files_written.append(
         _write(
@@ -1205,7 +1209,7 @@ def _scaffold_module(
 def _scaffold_project(
     project: dict[str, Any],
     learning_path: Path,
-    solution_path: Path,
+    solution_path: Path | None,
     overwrite: bool,
 ) -> dict[str, Any]:
     project_id = project.get("id") or ""
@@ -1217,10 +1221,10 @@ def _scaffold_project(
     hours = project.get("hours")
 
     learning_proj = learning_path / "projects" / project_id
-    solution_proj = solution_path / "projects" / project_id
+    solution_proj = solution_path / "projects" / project_id if solution_path else None
 
     files_written: list[str] = []
-    created = not learning_proj.exists() and not solution_proj.exists()
+    created = not learning_proj.exists() and not (solution_proj and solution_proj.exists())
     if not created and not overwrite:
         return {
             "project_id": project_id,
@@ -1234,12 +1238,13 @@ def _scaffold_project(
             _project_learning_placeholder(project_id, title, hours, project),
         )
     )
-    files_written.append(
-        _write(
-            solution_proj / "README.md",
-            _project_solution_placeholder(project_id, title),
+    if solution_proj is not None:
+        files_written.append(
+            _write(
+                solution_proj / "README.md",
+                _project_solution_placeholder(project_id, title),
+            )
         )
-    )
 
     return {
         "project_id": project_id,

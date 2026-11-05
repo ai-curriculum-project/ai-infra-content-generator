@@ -1486,8 +1486,10 @@ def cmd_org_generate_learning(args: argparse.Namespace) -> int:
         + (f", deferred at {report['deferred_module']} (agent limit)" if report["deferred_module"] else "")
         + "."
     )
+    timed_out = set(report.get("modules_timed_out", []))
     for mod in report["modules_generated"]:
-        print(f"  ✓ {mod}")
+        note = " (written, then the agent hit its time limit)" if mod in timed_out else ""
+        print(f"  ✓ {mod}{note}")
     for mod in report["modules_failed"]:
         print(f"  ✗ {mod}")
     if report.get("modules_skipped"):

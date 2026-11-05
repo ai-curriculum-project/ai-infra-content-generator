@@ -347,3 +347,36 @@ def test_bootstrap_report_written_to_state_dir(tmp_path: Path) -> None:
     payload = json.loads(report.read_text(encoding="utf-8"))
     assert payload["operation"] == "bootstrap_role"
     assert payload["plan"]["role_id"] == "data-engineer"
+
+
+def test_execute_plan_scaffolds_single_repo_roles_without_a_solutions_repo(tmp_path: Path) -> None:
+    # Startup roles keep everything in one `*-curriculum` repo; scaffolding
+    # used to crash on `workspace / None` for the missing solutions repo.
+    from aicg.bootstrap import execute_curriculum_plan
+
+    manifest_path = write_minimal_manifest(tmp_path / "aicg-org.yaml")
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    payload["roles"].append({
+        "id": "data-engineer", "title": "Data Engineer", "level": 25,
+        "learning_repo": "data-engineer-curriculum", "solution_repo": None,
+        "repo_model": "single",
+    })
+    manifest_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    manifest = load_manifest(manifest_path)
+    workspace = tmp_path / "workspace"
+    learning = workspace / "data-engineer-curriculum"
+    plan_path = learning / ".aicg" / "curriculum-plan.json"
+    plan_path.parent.mkdir(parents=True)
+    plan_path.write_text(json.dumps(_curriculum_plan()), encoding="utf-8")
+
+    report = execute_curriculum_plan(
+        manifest=manifest, workspace=workspace, role_id="data-engineer",
+        state_dir=tmp_path / "state",
+    )
+
+    assert report["modules_created"] == ["mod-101-foundations", "mod-102-streaming"]
+    assert report["projects_created"] == ["project-101-batch-pipeline"]
+    assert report["solution_path"] is None
+    assert (learning / "lessons" / "mod-101-foundations" / "exercises" / "exercise-01-intro.md").exists()
+    assert (learning / "projects" / "project-101-batch-pipeline" / "README.md").exists()
+    assert sorted(p.name for p in workspace.iterdir()) == ["data-engineer-curriculum"]

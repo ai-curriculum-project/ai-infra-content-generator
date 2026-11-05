@@ -124,3 +124,40 @@ def test_generate_overwrite_reauthors_existing_modules(tmp_path: Path) -> None:
     )
     assert report["modules_skipped"] == []
     assert sorted(log.read_text().split()) == ["learning-mod-001-done", "learning-mod-002-stub"]
+
+
+def _timing_out_agent(tmp_path: Path, write_chapter: bool) -> str:
+    # Stand-in for run-claude-content.sh hitting its hard timeout (exit 124),
+    # optionally after writing the module's chapters.
+    body = (
+        "import sys, pathlib\n"
+        "repo = pathlib.Path(sys.argv[1])\n"
+        + ("(repo / 'lessons/mod-002-stub/01-chapter.md').write_text('# Chapter\\n')\n"
+           if write_chapter else "")
+        + "sys.exit(124)\n"
+    )
+    script = write_file(tmp_path / "timeout_agent.py", body)
+    return f"{sys.executable} {script} {{repo}}"
+
+
+def test_module_written_before_a_timeout_counts_as_authored(tmp_path: Path) -> None:
+    workspace, _ = _role_workspace(tmp_path)
+    manifest = load_manifest(write_minimal_manifest(tmp_path / "aicg-org.yaml"))
+    report = generate_role_learning_content(
+        manifest, workspace, "security",
+        command_override=_timing_out_agent(tmp_path, write_chapter=True),
+    )
+    assert report["modules_generated"] == ["mod-002-stub"]
+    assert report["modules_failed"] == []
+    assert report["modules_timed_out"] == ["mod-002-stub"]
+
+
+def test_timeout_with_nothing_written_is_a_failure(tmp_path: Path) -> None:
+    workspace, _ = _role_workspace(tmp_path)
+    manifest = load_manifest(write_minimal_manifest(tmp_path / "aicg-org.yaml"))
+    report = generate_role_learning_content(
+        manifest, workspace, "security",
+        command_override=_timing_out_agent(tmp_path, write_chapter=False),
+    )
+    assert report["modules_generated"] == []
+    assert report["modules_failed"] == ["mod-002-stub"]
