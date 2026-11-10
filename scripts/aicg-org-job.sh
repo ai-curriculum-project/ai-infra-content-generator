@@ -66,6 +66,7 @@ Jobs:
   daily-remediate
   daily-issues
   daily-steward
+  steward               (per domain, twice daily: merge open PRs whose CI passed; no Claude calls)
   daily-discussions
   backfill-assessments  (daily per domain: author quizzes/labs for ONE module still on placeholders)
   resolve-markers       (daily: resolve a batch of needs-research markers in ONE module)
@@ -606,6 +607,12 @@ if files and all(ok.fullmatch(f) for f in files) and re.fullmatch(r'[0-9a-f]{40}
       # skipped (dirty tree etc.) on a previous run. Idempotent —
       # already-branded repos are no-ops.
       run_aicg_org rebrand --apply || true
+      ;;
+    steward)
+      # Sibling domains: daily-remediate merges each PR it opens right away,
+      # so a PR whose CI was still running is left open. Nothing retried it
+      # (daily-steward covers ai-infra only), and PRs sat for days.
+      run_aicg_org steward --apply
       ;;
     daily-discussions)
       run_aicg_org discussions
