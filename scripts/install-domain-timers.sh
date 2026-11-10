@@ -13,6 +13,7 @@
 #   - aicg-<domain>-fill.timer                  (daily: fill the next unfilled role)
 #   - aicg-<domain>-backfill-assessments.timer  (daily: quizzes/labs for one module)
 #   - aicg-<domain>-resolve-markers.timer       (daily: needs-research markers, one module batch)
+#   - aicg-<domain>-steward.timer               (twice daily: merge open PRs whose CI passed)
 # all pointing at the domain's manifest + a per-domain state dir, and offset by
 # --hour-offset so 4 domains don't hit the shared Claude subscription at once.
 #
@@ -171,6 +172,12 @@ write_unit "$DOMAIN-backfill-assessments" "$(job_cmd_noarg backfill-assessments)
 # (05:FMIN, its own hour). Uses the web-enabled research agent.
 write_unit "$DOMAIN-resolve-markers" "$(job_cmd_noarg resolve-markers)" "*-*-* 05:$FMIN:00"
 
+# PR steward: merge open PRs whose CI has passed. daily-remediate merges
+# inline, but a PR whose CI is still running is left open, and without this
+# nothing retries it. No Claude calls, so it can run in the daytime. 09 and
+# 17 sit clear of the authoring ticks (00/07/19/22) so it rarely meets the lock.
+write_unit "$DOMAIN-steward" "$(job_cmd_noarg steward)" "*-*-* 09,17:$FMIN:00"
+
 if [[ "$DRY_RUN" -eq 0 ]]; then
   systemctl --user daemon-reload
   # Tear down stale per-role timers for roles no longer in the manifest.
@@ -185,5 +192,5 @@ if [[ "$DRY_RUN" -eq 0 ]]; then
     systemctl --user disable --now "$base" 2>/dev/null || true
     rm -f "$t"
   done
-  log "Installed $DOMAIN timers (${#ROLES[@]} research + ${#ROLES[@]} generate + ${#ROLES[@]} review + 1 daily (x4/day) + 1 weekly-audit + 1 discover-roles + 1 fill + 1 backfill + 1 markers)."
+  log "Installed $DOMAIN timers (${#ROLES[@]} research + ${#ROLES[@]} generate + ${#ROLES[@]} review + 1 daily (x4/day) + 1 weekly-audit + 1 discover-roles + 1 fill + 1 backfill + 1 markers + 1 steward (x2/day))."
 fi
