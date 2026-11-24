@@ -403,6 +403,7 @@ def test_rollup_genuinely_running_check_stays_pending() -> None:
 
 def _marker_pr() -> dict:
     return {
+        "number": 7,
         "isDraft": False,
         "headRefName": "aicg/2026-11-23/r/fill",
         "files": [{"path": "lessons/mod-1/a.md"}],
@@ -437,8 +438,10 @@ def test_pr_guardrails_fall_back_to_local_scan_when_git_unavailable(tmp_path: Pa
 
 def test_steward_apply_closes_duplicates_before_merging(tmp_path: Path) -> None:
     workspace, state_dir, manifest = _setup_workspace(tmp_path)
-    old = {"number": 14, "title": "gap", "headRefName": "aicg/2026-11-11/ops/learning-x", "isDraft": False, "labels": []}
-    new = {"number": 35, "title": "gap", "headRefName": "aicg/2026-11-24/ops/learning-x", "isDraft": False, "labels": []}
+    old = {"number": 14, "title": "gap", "headRefName": "aicg/2026-11-11/ops/learning-x", "isDraft": False,
+           "labels": [], "isCrossRepository": False}
+    new = {"number": 35, "title": "gap", "headRefName": "aicg/2026-11-24/ops/learning-x", "isDraft": False,
+           "labels": [], "isCrossRepository": False}
     view = {
         "number": 35, "headRefName": new["headRefName"], "isDraft": False, "labels": [],
         "files": [], "mergeable": "MERGEABLE", "statusCheckRollup": [_success_check("ci")],
@@ -461,8 +464,8 @@ def test_steward_apply_closes_duplicates_before_merging(tmp_path: Path) -> None:
 def test_steward_dry_run_plans_remediation_without_acting(tmp_path: Path) -> None:
     workspace, state_dir, manifest = _setup_workspace(tmp_path)
     prs = [
-        {"number": 1, "headRefName": "aicg/2026-01-01/r/x", "isDraft": False, "labels": []},
-        {"number": 2, "headRefName": "aicg/2026-01-02/r/x", "isDraft": False, "labels": []},
+        {"number": 1, "headRefName": "aicg/2026-01-01/r/x", "isDraft": False, "labels": [], "isCrossRepository": False},
+        {"number": 2, "headRefName": "aicg/2026-01-02/r/x", "isDraft": False, "labels": [], "isCrossRepository": False},
     ]
     view = {"number": 2, "headRefName": "aicg/2026-01-02/r/x", "isDraft": False, "labels": [],
             "files": [], "mergeable": "MERGEABLE", "statusCheckRollup": [_failure_check("lint")]}
@@ -491,8 +494,8 @@ def test_pr_guardrails_downgrade_introduced_markers_when_allowed(tmp_path: Path)
 
 def _marker_blocked_setup(tmp_path: Path, numbers: list[int]):
     workspace, state_dir, manifest = _setup_workspace(tmp_path)
-    prs = [{"number": n, "headRefName": f"aicg/2026-11-2{n % 10}/r/item-{n}", "isDraft": False, "labels": []}
-           for n in numbers]
+    prs = [{"number": n, "headRefName": f"aicg/2026-11-2{n % 10}/r/item-{n}", "isDraft": False, "labels": [],
+            "isCrossRepository": False} for n in numbers]
     views = {n: {"number": n, "headRefName": f"aicg/2026-11-2{n % 10}/r/item-{n}", "isDraft": False,
                  "labels": [], "files": [{"path": "lessons/mod-1/a.md"}], "mergeable": "MERGEABLE",
                  "statusCheckRollup": [_success_check("ci")]} for n in numbers}
@@ -532,3 +535,35 @@ def test_steward_merges_after_marker_attempts_exhausted(tmp_path: Path) -> None:
     act.assert_not_called()
     solutions = next(r for r in report["repos"] if r["repo"].endswith("solutions"))
     assert solutions["prs"][0]["state"] == "would_merge"
+
+
+def test_pr_guardrails_block_fork_prs(tmp_path: Path) -> None:
+    """Fork PRs never auto-merge: their head can change after review and the
+    runner did not write them (ai-infra-engineer-learning#18 got auto-merge
+    enabled before this)."""
+    pr = {**_marker_pr(), "isCrossRepository": True}
+    with patch("aicg.steward.introduced_marker_paths", return_value=[]):
+        decision = evaluate_pr_guardrails(repo_path=tmp_path, pr=pr)
+    assert not decision.allowed
+    assert any("fork" in b.lower() for b in decision.blockers)
+
+
+def test_pr_guardrails_compare_the_pr_head_object(tmp_path: Path) -> None:
+    pr = {**_marker_pr(), "number": 7, "headRefOid": "abc123"}
+    with patch("aicg.steward.introduced_marker_paths", return_value=[]) as cmp:
+        evaluate_pr_guardrails(repo_path=tmp_path, pr=pr)
+    cmp.assert_called_once_with(tmp_path, 7, ["lessons/mod-1/a.md"], expected_oid="abc123")
+
+
+def test_steward_never_remediates_fork_prs(tmp_path: Path) -> None:
+    workspace, state_dir, manifest = _setup_workspace(tmp_path)
+    fork = {"number": 5, "headRefName": "aicg/2026-01-01/r/x", "isDraft": False, "labels": [], "isCrossRepository": True}
+    view = {**fork, "files": [], "mergeable": "MERGEABLE", "statusCheckRollup": [_failure_check("lint")]}
+    with patch("aicg.steward.list_open_prs") as mock_list, patch(
+        "aicg.steward.pr_view", return_value=view
+    ), patch("aicg.steward.apply_action") as act:
+        mock_list.side_effect = lambda rp: [fork] if rp.name.endswith("solutions") else []
+        report = steward_run(manifest, workspace, state_dir=state_dir, apply=True)
+    act.assert_not_called()
+    solutions = next(r for r in report["repos"] if r["repo"].endswith("solutions"))
+    assert solutions["remediation"] == []

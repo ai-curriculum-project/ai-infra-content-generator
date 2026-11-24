@@ -23,8 +23,10 @@ blocked for ``needs-research`` / ``manual-review`` markers it *introduces*,
 not for markers already on main (those belong to ``resolve-markers``).
 
 Planning functions are pure; ``apply_action`` and the git helpers do the IO.
-Only ``aicg/<date>/...`` work branches are ever touched; human-reviewed
-PRs (``review_blocked``) are never closed.
+Only same-repo ``aicg/<date>/...`` work branches are ever touched: anyone can
+open a fork PR with a work-branch name, so fork PRs (``isCrossRepository``,
+or provenance unknown) are never closed, rebased or used for dedupe. Human-
+reviewed PRs (``review_blocked``) are never closed.
 """
 from __future__ import annotations
 
@@ -110,6 +112,11 @@ def item_work_key(repo: str, work_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+def is_runner_pr(pr: dict[str, Any]) -> bool:
+    """A same-repo PR on an aicg work branch. Fails closed on missing provenance."""
+    return pr.get("isCrossRepository") is False and work_key(pr.get("headRefName", "")) is not None
+
+
 def plan_duplicate_closures(open_prs: list[dict[str, Any]]) -> list[RemediationAction]:
     """Close all but the newest open PR for each work item.
 
@@ -118,7 +125,7 @@ def plan_duplicate_closures(open_prs: list[dict[str, Any]]) -> list[RemediationA
     by_key: dict[str, list[dict[str, Any]]] = {}
     for pr in open_prs:
         key = work_key(pr.get("headRefName", ""))
-        if key and isinstance(pr.get("number"), int):
+        if key and is_runner_pr(pr) and isinstance(pr.get("number"), int):
             by_key.setdefault(key, []).append(pr)
     actions: list[RemediationAction] = []
     for prs in by_key.values():
@@ -297,7 +304,8 @@ def open_pr_work_keys(repo_path: Path) -> set[str] | None:
         return None
     try:
         done = _run_gh(
-            repo_path, ["gh", "pr", "list", "--state", "open", "--json", "headRefName", "--limit", "200"]
+            repo_path,
+        ["gh", "pr", "list", "--state", "open", "--json", "headRefName,isCrossRepository", "--limit", "200"],
         )
     except OSError:
         return None
@@ -307,7 +315,7 @@ def open_pr_work_keys(repo_path: Path) -> set[str] | None:
         prs = json.loads(done.stdout or "[]")
     except json.JSONDecodeError:
         return None
-    return {k for p in prs if (k := work_key(p.get("headRefName", "")))}
+    return {k for p in prs if is_runner_pr(p) and (k := work_key(p.get("headRefName", "")))}
 
 
 # ---------------------------------------------------------------------------
@@ -330,18 +338,28 @@ def _file_at(repo_path: Path, rev: str, path: str) -> str:
     return shown.stdout if shown.returncode == 0 else ""  # absent at rev = no markers
 
 
-def introduced_marker_paths(repo_path: Path, head_ref: str, paths: list[str]) -> list[str] | None:
+def introduced_marker_paths(
+    repo_path: Path, pr_number: int, paths: list[str], expected_oid: str | None = None
+) -> list[str] | None:
     """Changed files where the PR head has MORE blocking markers than its base.
 
-    Compares the PR head against its merge-base with ``origin/main``, so a
-    marker that was already on main (and merely carried along) is not the
-    PR's fault. Returns None when the comparison can't be made (no git, head
-    unreachable) so callers can fail closed.
+    Fetches the PR's own head (``refs/pull/<n>/head`` — the object GitHub
+    merges, fork or not; never a same-named origin branch) and compares it
+    against its merge-base with ``origin/main``, so a marker that was already
+    on main is not the PR's fault. When ``expected_oid`` (the PR's
+    ``headRefOid``) is given the fetched head must match it. Returns None when
+    the comparison can't be made so callers fail closed.
     """
-    head_rev = f"refs/aicg-guardrail/{head_ref}"
-    fetched = _git(repo_path, "fetch", "-q", "origin", "main", f"+{head_ref}:{head_rev}")
+    if not isinstance(pr_number, int) or isinstance(pr_number, bool):
+        return None
+    head_rev = f"refs/aicg-guardrail/pr-{pr_number}"
+    fetched = _git(repo_path, "fetch", "-q", "origin", "main", f"+refs/pull/{pr_number}/head:{head_rev}")
     if fetched.returncode != 0:
         return None
+    if expected_oid:
+        got = _git(repo_path, "rev-parse", head_rev)
+        if got.returncode != 0 or got.stdout.strip() != expected_oid:
+            return None
     base = _git(repo_path, "merge-base", "origin/main", head_rev)
     if base.returncode != 0 or not base.stdout.strip():
         base = _git(repo_path, "merge-base", "FETCH_HEAD", head_rev)

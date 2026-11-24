@@ -52,6 +52,7 @@ from .pr_remediation import (
     RemediationContext,
     apply_action,
     introduced_marker_paths,
+    is_runner_pr,
     plan_duplicate_closures,
     plan_post_steward,
 )
@@ -307,14 +308,17 @@ def steward_repo(
 
     # Post-pass: rebase conflicting PRs, resolve PR-introduced markers on the
     # branch, close anything else stuck past the limit (re-queued by the audit).
+    # Only the runner's own same-repo PRs are ever remediated (never forks).
+    runner_prs = {pr.get("number") for pr in prs if is_runner_pr(pr)}
+    own_outcomes = [o for o in pr_outcomes if o.get("pr_number") in runner_prs]
     marker_attempts = {
         o["pr_number"]: ctx.attempts.get(f"{repo}#{o['pr_number']}", 0)
-        for o in pr_outcomes
+        for o in own_outcomes
         if isinstance(o.get("pr_number"), int)
     }
     remediation += [
         _run_action(repo, repo_path, a, apply, ctx)
-        for a in plan_post_steward(pr_outcomes, today=date.today(), marker_attempts=marker_attempts)
+        for a in plan_post_steward(own_outcomes, today=date.today(), marker_attempts=marker_attempts)
     ]
 
     return {
@@ -540,7 +544,7 @@ def list_open_prs(repo_path: Path) -> list[dict[str, Any]]:
             "--state",
             "open",
             "--json",
-            "number,title,headRefName,headRefOid,author,labels,isDraft",
+            "number,title,headRefName,headRefOid,author,labels,isDraft,isCrossRepository",
             "--limit",
             "100",
         ],
@@ -562,7 +566,8 @@ def pr_view(repo_path: Path, pr_number: int) -> dict[str, Any]:
             "view",
             str(pr_number),
             "--json",
-            "number,title,headRefName,mergeable,mergeStateStatus,state,labels,statusCheckRollup,changedFiles,files",
+            "number,title,headRefName,headRefOid,isCrossRepository,mergeable,mergeStateStatus,"
+            "state,labels,statusCheckRollup,changedFiles,files",
         ],
     )
     if completed.returncode != 0:
@@ -1062,6 +1067,11 @@ def evaluate_pr_guardrails(
     if head_ref in {"main", "master"}:
         blockers.append("PR head ref is main/master.")
 
+    # Fork PRs never auto-merge: the runner didn't write them and their head
+    # can change after any review. A human merges them.
+    if pr.get("isCrossRepository") is True:
+        blockers.append("PR is from a fork; auto-merge requires a human.")
+
     changed = [
         item.get("path")
         for item in (pr.get("files") or [])
@@ -1078,8 +1088,11 @@ def evaluate_pr_guardrails(
     # Marker freedom: block only markers the PR *introduces* (head vs its
     # merge-base with main). Markers already on main are resolve-markers'
     # job; blocking on them stranded every PR that touched such a file.
+    pr_number = pr.get("number")
     introduced = (
-        introduced_marker_paths(repo_path, head_ref, changed) if changed and head_ref else None
+        introduced_marker_paths(repo_path, pr_number, changed, expected_oid=pr.get("headRefOid"))
+        if changed and isinstance(pr_number, int)
+        else None
     )
     if introduced and allow_introduced_markers:
         # Resolution attempts spent: merge; resolve-markers owns them on main.
