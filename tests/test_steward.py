@@ -375,3 +375,160 @@ def test_wait_for_ci_returns_failure_on_failed_check(tmp_path: Path) -> None:
             poll_seconds=0,
         )
     assert result["status"] == "failure"
+
+
+# ---------------------------------------------------------------------------
+# Stuck-PR remediation hooks
+# ---------------------------------------------------------------------------
+
+
+def test_rollup_ghost_in_progress_with_conclusion_is_terminal() -> None:
+    """GitHub sometimes reports status=IN_PROGRESS on a check that already has
+    a conclusion + completedAt (the run itself is completed). Waiting on it
+    never ends, so the conclusion is authoritative."""
+    ghost = {
+        "name": "docker build (smoke)",
+        "status": "IN_PROGRESS",
+        "conclusion": "SUCCESS",
+        "completedAt": "2026-11-11T21:01:10Z",
+    }
+    assert classify_rollup([_success_check("lint"), ghost]) == "success"
+    assert classify_rollup([{**ghost, "conclusion": "FAILURE"}]) == "failure"
+
+
+def test_rollup_genuinely_running_check_stays_pending() -> None:
+    running = {"name": "e2e", "status": "IN_PROGRESS", "conclusion": "", "completedAt": "0001-01-01T00:00:00Z"}
+    assert classify_rollup([running]) == "pending"
+
+
+def _marker_pr() -> dict:
+    return {
+        "isDraft": False,
+        "headRefName": "aicg/2026-11-23/r/fill",
+        "files": [{"path": "lessons/mod-1/a.md"}],
+        "labels": [],
+        "mergeable": "MERGEABLE",
+    }
+
+
+def test_pr_guardrails_allow_marker_that_predates_the_pr(tmp_path: Path) -> None:
+    (tmp_path / "lessons" / "mod-1").mkdir(parents=True)
+    (tmp_path / "lessons" / "mod-1" / "a.md").write_text("<!-- needs-research: old -->\n")
+    with patch("aicg.steward.introduced_marker_paths", return_value=[]):
+        decision = evaluate_pr_guardrails(repo_path=tmp_path, pr=_marker_pr())
+    assert decision.allowed, decision.blockers
+
+
+def test_pr_guardrails_block_marker_the_pr_introduces(tmp_path: Path) -> None:
+    with patch("aicg.steward.introduced_marker_paths", return_value=["lessons/mod-1/a.md"]):
+        decision = evaluate_pr_guardrails(repo_path=tmp_path, pr=_marker_pr())
+    assert not decision.allowed
+    assert any("introduced" in b and "lessons/mod-1/a.md" in b for b in decision.blockers)
+
+
+def test_pr_guardrails_fall_back_to_local_scan_when_git_unavailable(tmp_path: Path) -> None:
+    """Fail closed: if the PR head can't be compared, keep the old scan."""
+    (tmp_path / "lessons" / "mod-1").mkdir(parents=True)
+    (tmp_path / "lessons" / "mod-1" / "a.md").write_text("<!-- needs-research: old -->\n")
+    with patch("aicg.steward.introduced_marker_paths", return_value=None):
+        decision = evaluate_pr_guardrails(repo_path=tmp_path, pr=_marker_pr())
+    assert not decision.allowed
+
+
+def test_steward_apply_closes_duplicates_before_merging(tmp_path: Path) -> None:
+    workspace, state_dir, manifest = _setup_workspace(tmp_path)
+    old = {"number": 14, "title": "gap", "headRefName": "aicg/2026-11-11/ops/learning-x", "isDraft": False, "labels": []}
+    new = {"number": 35, "title": "gap", "headRefName": "aicg/2026-11-24/ops/learning-x", "isDraft": False, "labels": []}
+    view = {
+        "number": 35, "headRefName": new["headRefName"], "isDraft": False, "labels": [],
+        "files": [], "mergeable": "MERGEABLE", "statusCheckRollup": [_success_check("ci")],
+    }
+    with patch("aicg.steward.list_open_prs") as mock_list, patch(
+        "aicg.steward.pr_view", return_value=view
+    ) as mock_view, patch("aicg.steward.enable_auto_merge", return_value={"returncode": 0}), patch(
+        "aicg.steward.pr_state", return_value="MERGED"
+    ), patch("aicg.steward.apply_action", side_effect=lambda rp, a, **kw: {**a.as_dict(), "result": "closed"}) as act:
+        mock_list.side_effect = lambda repo_path: [old, new] if repo_path.name.endswith("solutions") else []
+        report = steward_run(manifest, workspace, state_dir=state_dir, apply=True)
+
+    solutions = next(r for r in report["repos"] if r["repo"].endswith("solutions"))
+    assert [a["pr_number"] for a in solutions["remediation"]] == [14]
+    assert act.call_args.args[1].kind == "close_duplicate"
+    assert [p["pr_number"] for p in solutions["prs"]] == [35]  # #14 was never stewarded
+    assert all(call.args[1] == 35 for call in mock_view.call_args_list)
+
+
+def test_steward_dry_run_plans_remediation_without_acting(tmp_path: Path) -> None:
+    workspace, state_dir, manifest = _setup_workspace(tmp_path)
+    prs = [
+        {"number": 1, "headRefName": "aicg/2026-01-01/r/x", "isDraft": False, "labels": []},
+        {"number": 2, "headRefName": "aicg/2026-01-02/r/x", "isDraft": False, "labels": []},
+    ]
+    view = {"number": 2, "headRefName": "aicg/2026-01-02/r/x", "isDraft": False, "labels": [],
+            "files": [], "mergeable": "MERGEABLE", "statusCheckRollup": [_failure_check("lint")]}
+    with patch("aicg.steward.list_open_prs") as mock_list, patch(
+        "aicg.steward.pr_view", return_value=view
+    ), patch("aicg.steward.apply_action") as act:
+        mock_list.side_effect = lambda repo_path: prs if repo_path.name.endswith("solutions") else []
+        report = steward_run(manifest, workspace, state_dir=state_dir, apply=False)
+
+    act.assert_not_called()
+    solutions = next(r for r in report["repos"] if r["repo"].endswith("solutions"))
+    planned = {(a["kind"], a["pr_number"], a["result"]) for a in solutions["remediation"]}
+    assert planned == {("close_duplicate", 1, "planned"), ("close_stale", 2, "planned")}
+
+
+def test_pr_guardrails_downgrade_introduced_markers_when_allowed(tmp_path: Path) -> None:
+    """After marker resolution attempts are exhausted the PR may merge; the
+    markers land on main where the daily resolve-markers job owns them."""
+    with patch("aicg.steward.introduced_marker_paths", return_value=["lessons/mod-1/a.md"]):
+        decision = evaluate_pr_guardrails(
+            repo_path=tmp_path, pr=_marker_pr(), allow_introduced_markers=True
+        )
+    assert decision.allowed
+    assert any("lessons/mod-1/a.md" in w for w in decision.warnings)
+
+
+def _marker_blocked_setup(tmp_path: Path, numbers: list[int]):
+    workspace, state_dir, manifest = _setup_workspace(tmp_path)
+    prs = [{"number": n, "headRefName": f"aicg/2026-11-2{n % 10}/r/item-{n}", "isDraft": False, "labels": []}
+           for n in numbers]
+    views = {n: {"number": n, "headRefName": f"aicg/2026-11-2{n % 10}/r/item-{n}", "isDraft": False,
+                 "labels": [], "files": [{"path": "lessons/mod-1/a.md"}], "mergeable": "MERGEABLE",
+                 "statusCheckRollup": [_success_check("ci")]} for n in numbers}
+    return workspace, state_dir, manifest, prs, views
+
+
+def test_steward_resolves_introduced_markers_within_budget(tmp_path: Path) -> None:
+    workspace, state_dir, manifest, prs, views = _marker_blocked_setup(tmp_path, [1, 2, 3])
+    with patch("aicg.steward.list_open_prs") as mock_list, patch(
+        "aicg.steward.pr_view", side_effect=lambda rp, n: views[n]
+    ), patch("aicg.steward.introduced_marker_paths", return_value=["lessons/mod-1/a.md"]), patch(
+        "aicg.steward.apply_action", side_effect=lambda rp, a, **kw: {**a.as_dict(), "result": "pushed"}
+    ) as act:
+        mock_list.side_effect = lambda rp: prs if rp.name.endswith("solutions") else []
+        steward_run(manifest, workspace, state_dir=state_dir, apply=True)
+
+    resolved = [c.args[1].pr_number for c in act.call_args_list if c.args[1].kind == "resolve_markers"]
+    assert len(resolved) == 2  # MAX_AGENT_RUNS_PER_PASS
+    attempts = json.loads((state_dir / "marker-remediation.json").read_text())
+    assert sorted(attempts["attempts"].values()) == [1, 1]
+
+
+def test_steward_merges_after_marker_attempts_exhausted(tmp_path: Path) -> None:
+    workspace, state_dir, manifest, prs, views = _marker_blocked_setup(tmp_path, [1])
+    state_dir.mkdir(parents=True, exist_ok=True)
+    (state_dir / "marker-remediation.json").write_text(
+        json.dumps({"attempts": {"ai-infra-security-solutions#1": 3}})
+    )
+    with patch("aicg.steward.list_open_prs") as mock_list, patch(
+        "aicg.steward.pr_view", side_effect=lambda rp, n: views[n]
+    ), patch("aicg.steward.introduced_marker_paths", return_value=["lessons/mod-1/a.md"]), patch(
+        "aicg.steward.apply_action"
+    ) as act:
+        mock_list.side_effect = lambda rp: prs if rp.name.endswith("solutions") else []
+        report = steward_run(manifest, workspace, state_dir=state_dir, apply=False)
+
+    act.assert_not_called()
+    solutions = next(r for r in report["repos"] if r["repo"].endswith("solutions"))
+    assert solutions["prs"][0]["state"] == "would_merge"

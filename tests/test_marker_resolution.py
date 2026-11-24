@@ -258,3 +258,33 @@ def test_judge_allows_a_normal_citation() -> None:
         "(https://corp.delaware.gov/frtaxcalc/)).\n"
     }
     assert _judge(before, after, {"a.md"}).accepted
+
+
+# --- scoped resolution (steward remediation of PR branches) ----------------------------
+
+
+def test_resolve_file_markers_only_batches_the_given_files(tmp_path: Path) -> None:
+    from aicg.marker_resolution import resolve_file_markers
+
+    workspace, learning, manifest = _setup(tmp_path)
+    write_file(learning / "lessons/mod-001-a/02-more.md", f"Other. {M}\n")
+    _git(learning, "commit", "-qam", "second marker")
+    verdict = resolve_file_markers(
+        manifest, learning, "ai-infra-security-learning",
+        ["lessons/mod-001-a/01-intro.md"], command_override=_agent(tmp_path, RESOLVE),
+    )
+    assert verdict.accepted and verdict.resolved == 2
+    assert verdict.changed == ["lessons/mod-001-a/01-intro.md"]
+    assert "needs-research" in (learning / "lessons/mod-001-a/02-more.md").read_text()
+
+
+def test_resolve_file_markers_nothing_to_do(tmp_path: Path) -> None:
+    from aicg.marker_resolution import resolve_file_markers
+
+    workspace, learning, manifest = _setup(tmp_path)
+    verdict = resolve_file_markers(
+        manifest, learning, "ai-infra-security-learning",
+        ["lessons/mod-001-a/02-more.md"], command_override="false",
+    )
+    assert not verdict.accepted
+    assert verdict.reason == "no markers in the given files"

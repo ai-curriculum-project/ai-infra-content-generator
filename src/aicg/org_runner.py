@@ -493,6 +493,7 @@ def run_daily_remediation(
     exit_reason = "queue_empty"
 
     skipped_unhandled = 0
+    open_pr_keys: dict[str, set[str] | None] = {}  # repo -> open PR work keys (cached)
     while True:
         ready_all = [
             item for item in queue.get("work_items", []) if item.get("status") == "ready"
@@ -502,6 +503,7 @@ def run_daily_remediation(
             if item.get("type", "") in HANDLED_WORK_TYPES
         ]
         skipped_unhandled = len(ready_all) - len(ready)
+        ready = _drop_items_with_open_prs(manifest, workspace, ready, open_pr_keys, queue_path, queue)
         if not ready:
             if not drained:
                 # Preserve old behavior on the very first iteration:
@@ -552,6 +554,41 @@ def run_daily_remediation(
     }
     write_json(state_dir / "daily-run-state.json", summary)
     return summary
+
+
+def _drop_items_with_open_prs(
+    manifest: OrgManifest,
+    workspace: Path,
+    ready: list[dict[str, Any]],
+    open_pr_keys: dict[str, set[str] | None],
+    queue_path: Path,
+    queue: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Skip ready items whose work branch already has an open PR.
+
+    The audit rebuilds the queue from main, so a gap whose PR is still open
+    comes back ``ready``; picking it again opened duplicate PRs. Such items
+    are marked ``pr_open`` (the steward owns them now). If gh can't list a
+    repo's PRs the items are left alone — no worse than before.
+    """
+    from . import pr_remediation
+
+    kept: list[dict[str, Any]] = []
+    marked = False
+    for item in ready:
+        repo = item.get("repo") or ""
+        if repo not in open_pr_keys:
+            open_pr_keys[repo] = pr_remediation.open_pr_work_keys(manifest.repo_path(workspace, repo))
+        keys = open_pr_keys[repo]
+        if keys and pr_remediation.item_work_key(repo, item.get("work_id", "")) in keys:
+            item["status"] = "pr_open"
+            item["updated_at"] = utc_now()
+            marked = True
+            continue
+        kept.append(item)
+    if marked:
+        write_json(queue_path, queue)
+    return kept
 
 
 def _process_one_item(

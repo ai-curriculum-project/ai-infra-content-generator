@@ -34,6 +34,7 @@ from __future__ import annotations
 import json
 import subprocess
 import time
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -44,9 +45,21 @@ from .guardrails import (
     matches_any,
 )
 from .org_config import OrgManifest, state_dir_for_manifest
+from .pr_remediation import (
+    BLOCKING_MARKERS,
+    MARKER_BLOCKER_PREFIX,
+    MAX_MARKER_ATTEMPTS,
+    RemediationContext,
+    apply_action,
+    introduced_marker_paths,
+    plan_duplicate_closures,
+    plan_post_steward,
+)
 from .state import utc_now, write_json
 
 STEWARD_REPORT = "steward-report.json"
+MARKER_REMEDIATION_STATE = "marker-remediation.json"
+BLOCKING_MARKER_TYPES = frozenset(BLOCKING_MARKERS)
 PR_RESPONSE_QUEUE = "pr-response-queue.json"
 DEFAULT_MAX_RESPONSE_ATTEMPTS = 3
 
@@ -72,6 +85,7 @@ def steward_run(
     """
     state_dir = state_dir_for_manifest(manifest, state_dir)
     state_dir.mkdir(parents=True, exist_ok=True)
+    ctx = RemediationContext(manifest=manifest, attempts=_load_marker_attempts(state_dir))
 
     repo_reports: list[dict[str, Any]] = []
     for repo in manifest.repo_names:
@@ -84,7 +98,13 @@ def steward_run(
                 ci_timeout_seconds=ci_timeout_seconds,
                 ci_poll_seconds=ci_poll_seconds,
                 merge_method=merge_method,
+                ctx=ctx,
             )
+        )
+    if apply:
+        write_json(
+            state_dir / MARKER_REMEDIATION_STATE,
+            {"schema_version": 1, "updated_at": utc_now(), "attempts": ctx.attempts},
         )
 
     report = {
@@ -113,6 +133,14 @@ def steward_run(
         _refresh_curriculum_manifest(workspace, report)
 
     return report
+
+
+def _load_marker_attempts(state_dir: Path) -> dict[str, int]:
+    try:
+        payload = json.loads((state_dir / MARKER_REMEDIATION_STATE).read_text(encoding="utf-8"))
+        return {str(k): int(v) for k, v in (payload.get("attempts") or {}).items()}
+    except (OSError, ValueError, AttributeError):
+        return {}
 
 
 def _any_pr_merged(repo_reports: list[dict[str, Any]]) -> bool:
@@ -238,7 +266,9 @@ def steward_repo(
     ci_timeout_seconds: int,
     ci_poll_seconds: int,
     merge_method: str,
+    ctx: RemediationContext | None = None,
 ) -> dict[str, Any]:
+    ctx = ctx or RemediationContext()
     if not repo_path.exists():
         return {
             "repo": repo,
@@ -248,6 +278,16 @@ def steward_repo(
         }
 
     prs = list_open_prs(repo_path)
+    remediation: list[dict[str, Any]] = []
+
+    # Pre-pass: close older duplicates first so we never merge a stale copy
+    # of a work item and then conflict the newer one.
+    duplicates = plan_duplicate_closures(prs)
+    closed = {a.pr_number for a in duplicates}
+    remediation += [_run_action(repo, repo_path, a, apply, ctx) for a in duplicates]
+    # Dry-run mirrors apply: report the plan as if the duplicates were gone.
+    prs = [pr for pr in prs if pr.get("number") not in closed]
+
     pr_outcomes: list[dict[str, Any]] = []
     for pr in prs:
         pr_outcomes.append(
@@ -259,13 +299,29 @@ def steward_repo(
                 ci_timeout_seconds=ci_timeout_seconds,
                 ci_poll_seconds=ci_poll_seconds,
                 merge_method=merge_method,
+                allow_introduced_markers=(
+                    ctx.attempts.get(f"{repo}#{pr.get('number')}", 0) >= MAX_MARKER_ATTEMPTS
+                ),
             )
         )
+
+    # Post-pass: rebase conflicting PRs, resolve PR-introduced markers on the
+    # branch, close anything else stuck past the limit (re-queued by the audit).
+    marker_attempts = {
+        o["pr_number"]: ctx.attempts.get(f"{repo}#{o['pr_number']}", 0)
+        for o in pr_outcomes
+        if isinstance(o.get("pr_number"), int)
+    }
+    remediation += [
+        _run_action(repo, repo_path, a, apply, ctx)
+        for a in plan_post_steward(pr_outcomes, today=date.today(), marker_attempts=marker_attempts)
+    ]
 
     return {
         "repo": repo,
         "path": str(repo_path),
         "present": True,
+        "remediation": remediation,
         "pr_count": len(pr_outcomes),
         "merged_count": sum(1 for item in pr_outcomes if item["state"] == "merged"),
         "blocked_count": sum(
@@ -281,6 +337,26 @@ def steward_repo(
     }
 
 
+def _run_action(
+    repo: str, repo_path: Path, action: Any, apply: bool, ctx: RemediationContext
+) -> dict[str, Any]:
+    if not apply:
+        return {**action.as_dict(), "result": "planned"}
+    if action.kind != "resolve_markers":
+        return apply_action(repo_path, action)
+    # Agent runs are bounded per pass; attempts per PR are persisted.
+    if ctx.agent_budget <= 0:
+        return {**action.as_dict(), "result": "deferred_budget"}
+    ctx.agent_budget -= 1
+    result = apply_action(repo_path, action, manifest=ctx.manifest, repo_name=repo)
+    if result.get("result") == "agent_limit":
+        ctx.agent_budget = 0  # subscription limit: stop, and don't burn an attempt
+    elif result.get("result") != "skipped_dirty":
+        key = f"{repo}#{action.pr_number}"
+        ctx.attempts[key] = ctx.attempts.get(key, 0) + 1
+    return result
+
+
 def steward_pr(
     repo: str,
     repo_path: Path,
@@ -289,6 +365,7 @@ def steward_pr(
     ci_timeout_seconds: int,
     ci_poll_seconds: int,
     merge_method: str,
+    allow_introduced_markers: bool = False,
 ) -> dict[str, Any]:
     number = pr.get("number")
     history: list[dict[str, Any]] = [
@@ -336,7 +413,9 @@ def steward_pr(
     # the union (list-only callers got ``title``, view-only callers
     # got ``files`` etc.).
     merged_pr = {**pr, **full_pr}
-    decision = evaluate_pr_guardrails(repo_path=repo_path, pr=merged_pr)
+    decision = evaluate_pr_guardrails(
+        repo_path=repo_path, pr=merged_pr, allow_introduced_markers=allow_introduced_markers
+    )
     if not decision.allowed:
         history.append(
             {
@@ -926,6 +1005,11 @@ def classify_rollup(rollup: list[dict[str, Any]]) -> str:
         status = (entry.get("status") or "").upper()
         conclusion = (entry.get("conclusion") or "").upper()
         state = (entry.get("state") or "").upper()
+        # A conclusion is final. GitHub sometimes leaves status=IN_PROGRESS on
+        # a check whose run already completed (conclusion + completedAt set);
+        # trusting the status there meant waiting forever (ci_timeout).
+        if conclusion:
+            status = "COMPLETED"
         # Pending signals can show up on either field.
         if status in _PENDING_STATES or state in _PENDING_STATES:
             has_pending = True
@@ -953,6 +1037,7 @@ def classify_rollup(rollup: list[dict[str, Any]]) -> str:
 def evaluate_pr_guardrails(
     repo_path: Path,
     pr: dict[str, Any],
+    allow_introduced_markers: bool = False,
 ) -> GuardrailDecision:
     """Re-check guardrails against the merged state of a PR.
 
@@ -990,19 +1075,29 @@ def evaluate_pr_guardrails(
             "Restricted files in PR: " + ", ".join(sorted(restricted))
         )
 
-    # Marker freedom: scan only the changed files in the local working
-    # tree. ``gh pr checkout`` would be more accurate but for the
-    # default aicg branch shape the head ref is local already.
-    marker_findings = scan_placeholders(repo_path, cache=PlaceholderCache(repo_path))
-    blocker_markers = [
-        item
-        for item in marker_findings
-        if item.get("type") in {"needs_research", "manual_review"}
-        and (not changed or item.get("path") in changed)
-    ]
-    if blocker_markers:
-        sample = ", ".join(item.get("path", "?") for item in blocker_markers[:3])
-        blockers.append(f"Marker remains in changed file(s): {sample}")
+    # Marker freedom: block only markers the PR *introduces* (head vs its
+    # merge-base with main). Markers already on main are resolve-markers'
+    # job; blocking on them stranded every PR that touched such a file.
+    introduced = (
+        introduced_marker_paths(repo_path, head_ref, changed) if changed and head_ref else None
+    )
+    if introduced and allow_introduced_markers:
+        # Resolution attempts spent: merge; resolve-markers owns them on main.
+        warnings.append(f"Merging with introduced marker(s) in: {', '.join(introduced)}")
+    elif introduced:
+        blockers.append(MARKER_BLOCKER_PREFIX + ", ".join(introduced))
+    elif introduced is None:
+        # Couldn't compare against the PR head — fail closed on a local scan.
+        marker_findings = scan_placeholders(repo_path, cache=PlaceholderCache(repo_path))
+        blocker_markers = [
+            item
+            for item in marker_findings
+            if item.get("type") in BLOCKING_MARKER_TYPES
+            and (not changed or item.get("path") in changed)
+        ]
+        if blocker_markers:
+            sample = ", ".join(item.get("path", "?") for item in blocker_markers[:3])
+            blockers.append(f"Marker remains in changed file(s): {sample}")
 
     mergeable = (pr.get("mergeable") or "").upper()
     if mergeable == "CONFLICTING":
