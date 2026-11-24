@@ -288,3 +288,13 @@ def test_resolve_file_markers_nothing_to_do(tmp_path: Path) -> None:
     )
     assert not verdict.accepted
     assert verdict.reason == "no markers in the given files"
+
+
+def test_marker_mentions_in_code_are_not_markers_for_resolution(tmp_path: Path) -> None:
+    from aicg.marker_resolution import count_markers
+
+    text = f"Use the `{M}` comment.\n```\n{M}\n```\nClaim. {M}\n"
+    write_file(tmp_path / "lessons/mod-101-a/01.md", text)
+    assert count_markers(text) == 1
+    (unit,) = find_marker_units(tmp_path)
+    assert [m.line for m in unit.markers] == [5]

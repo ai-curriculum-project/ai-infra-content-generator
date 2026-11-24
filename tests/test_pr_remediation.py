@@ -49,8 +49,8 @@ def test_item_work_key_matches_the_branch_the_runner_creates():
 # ---------------------------------------------------------------------------
 
 
-def _open(n: int, ref: str) -> dict:
-    return {"number": n, "headRefName": ref}
+def _open(n: int, ref: str, *, fork: bool = False) -> dict:
+    return {"number": n, "headRefName": ref, "isCrossRepository": fork}
 
 
 def test_plan_duplicate_closures_keeps_newest_pr_per_work_item():
@@ -66,6 +66,17 @@ def test_plan_duplicate_closures_keeps_newest_pr_per_work_item():
         ("close_duplicate", 14, 35),
         ("close_duplicate", 22, 35),
     }
+
+
+def test_plan_duplicate_closures_ignores_fork_prs_posing_as_work_branches():
+    """A fork PR named like a work branch must never get our PR closed."""
+    prs = [_open(14, "aicg/2026-11-11/ops/learning-x"), _open(99, "aicg/2026-11-24/ops/learning-x", fork=True)]
+    assert plan_duplicate_closures(prs) == []
+
+
+def test_plan_duplicate_closures_fails_closed_without_repo_provenance():
+    prs = [{"number": 1, "headRefName": "aicg/2026-11-11/r/x"}, {"number": 2, "headRefName": "aicg/2026-11-12/r/x"}]
+    assert plan_duplicate_closures(prs) == []
 
 
 def test_plan_duplicate_closures_none_when_unique():
@@ -201,6 +212,7 @@ def pr_repo(tmp_path: Path) -> Path:
     (work / "b.md").write_text("clean\n<!-- needs-research: new gap -->\n")
     _git(work, "commit", "-q", "-am", "fill")
     _git(work, "push", "-q", "origin", "aicg/2026-11-23/r/fill")
+    _git(work, "push", "-q", "origin", "HEAD:refs/pull/7/head")  # what GitHub exposes
 
     runner = tmp_path / "runner-clone"
     _git(tmp_path, "clone", "-q", str(origin), str(runner))
@@ -210,11 +222,19 @@ def pr_repo(tmp_path: Path) -> Path:
 
 
 def test_introduced_marker_paths_ignores_markers_already_on_main(pr_repo: Path):
-    assert introduced_marker_paths(pr_repo, "aicg/2026-11-23/r/fill", ["a.md", "b.md"]) == ["b.md"]
+    head = _git(pr_repo.parent / "origin", "rev-parse", "refs/pull/7/head")
+    assert introduced_marker_paths(pr_repo, 7, ["a.md", "b.md"], expected_oid=head) == ["b.md"]
 
 
 def test_introduced_marker_paths_none_when_head_unreachable(pr_repo: Path):
-    assert introduced_marker_paths(pr_repo, "aicg/2026-11-23/r/missing", ["a.md"]) is None
+    assert introduced_marker_paths(pr_repo, 999, ["a.md"]) is None
+
+
+def test_introduced_marker_paths_none_when_head_is_not_the_pr_head(pr_repo: Path):
+    """Compare the object GitHub will merge, nothing else: a mismatched
+    headRefOid means we fetched something other than the PR's head."""
+    main = _git(pr_repo.parent / "origin", "rev-parse", "main")
+    assert introduced_marker_paths(pr_repo, 7, ["b.md"], expected_oid=main) is None
 
 
 def test_open_pr_work_keys_none_for_pseudo_repo_without_checkout(tmp_path):
@@ -304,3 +324,29 @@ def test_apply_resolve_markers_agent_limit_is_reported_not_raised(pr_repo: Path)
         result = apply_action(pr_repo, action, manifest=object(), repo_name="r")
     assert result["result"] == "agent_limit"
     assert _git(pr_repo, "rev-parse", "--abbrev-ref", "HEAD") == "main"
+
+
+def test_open_pr_work_keys_ignores_fork_prs(tmp_path):
+    import json
+
+    from aicg.pr_remediation import open_pr_work_keys
+
+    listing = json.dumps([
+        {"headRefName": "aicg/2026-11-11/r/ours", "isCrossRepository": False},
+        {"headRefName": "aicg/2026-11-11/r/theirs", "isCrossRepository": True},
+    ])
+    with patch("aicg.pr_remediation._run_gh", return_value=subprocess.CompletedProcess([], 0, listing, "")) as gh:
+        keys = open_pr_work_keys(tmp_path)
+    assert keys == {"r/ours"}
+    assert "isCrossRepository" in gh.call_args.args[1][gh.call_args.args[1].index("--json") + 1]
+
+
+def test_marker_mentions_in_code_are_not_markers():
+    """Prose that *documents* the marker (inline code or a fenced example) is
+    not an unresolved claim — PR #35 stayed blocked on four such mentions."""
+    text = (
+        "See the `<!-- needs-research -->` marker in chapter 03.\n"
+        "```md\n<!-- needs-research: example -->\n```\n"
+        "Real claim. <!-- needs-research: cite it -->\n"
+    )
+    assert count_blocking_markers(text) == 1

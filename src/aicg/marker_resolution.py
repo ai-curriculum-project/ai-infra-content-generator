@@ -36,6 +36,7 @@ from .assessments import (
     head_sha,
     make_isolated_copy,
 )
+from .audit import mask_code
 from .org_config import OrgManifest
 from .org_runner import content_generation_command
 from .state import ensure_state_dir, utc_now, write_json
@@ -85,13 +86,13 @@ class Verdict:
 
 
 def count_markers(text: str) -> int:
-    return len(MARKER_RE.findall(text))
+    return len(MARKER_RE.findall(mask_code(text)))
 
 
 def _markers_in(path: Path, rel: str) -> list[Marker]:
     text = path.read_text(encoding="utf-8", errors="replace")
     found = []
-    for match in MARKER_RE.finditer(text):
+    for match in MARKER_RE.finditer(mask_code(text)):  # offsets preserved
         line = text.count("\n", 0, match.start()) + 1
         found.append(Marker(rel, line, " ".join(match.group(1).split())[:300]))
     return found
