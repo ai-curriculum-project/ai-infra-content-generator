@@ -369,6 +369,36 @@ def resolve_repo_markers(
     return report
 
 
+def resolve_file_markers(
+    manifest: OrgManifest,
+    repo: Path,
+    repo_name: str,
+    paths: list[str],
+    command_override: str | None = None,
+    batch_size: int = DEFAULT_BATCH,
+    lines_per_marker: int = DEFAULT_LINES_PER_MARKER,
+) -> Verdict:
+    """Resolve the markers in specific files of whatever ``repo`` has checked out.
+
+    Used by the steward on a PR branch whose own changes introduced markers.
+    Same isolated-copy agent run and ``judge_attempt`` bounds as
+    ``resolve_repo_markers``; only these files may change. Committing is the
+    caller's job. Raises ``AgentLimitReached`` like the repo-wide path.
+    """
+    markers = [
+        m
+        for rel in dict.fromkeys(paths)
+        if (repo / rel).is_file() and not (repo / rel).is_symlink()
+        for m in _markers_in(repo / rel, rel)
+    ]
+    if not markers:
+        return Verdict(False, 0, [], "no markers in the given files")
+    module_dir = "/".join(Path(markers[0].path).parts[:2])
+    unit = MarkerUnit(module_dir, tuple(markers))
+    command = _agent_command(manifest, command_override)
+    return _run_unit(command, repo, repo_name, unit, batch_size, lines_per_marker)
+
+
 def repos_with_markers(manifest: OrgManifest, workspace: Path) -> list[tuple[str, int]]:
     """(repo, marker count) for role repos on disk with markers, most first."""
     found = []

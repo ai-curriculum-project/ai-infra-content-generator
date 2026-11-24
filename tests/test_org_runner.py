@@ -471,3 +471,73 @@ def test_daily_remediation_verifies_after_generate(tmp_path):
         workspace / "ai-infra-security-solutions" / "VERSIONS.md"
     ).read_text(encoding="utf-8")
     assert "fill-mod-001-ml-security-foundations-solutions" in versions
+
+
+def test_daily_remediation_skips_items_that_already_have_an_open_pr(tmp_path):
+    """Regression: the audit resets gaps to ``ready`` from main, so an item
+    whose PR was still open got picked again and a duplicate PR opened
+    (startup-operations-governance had 3 PRs for one exercise)."""
+    import json as _json
+    from unittest.mock import patch
+
+    from aicg.org_runner import HANDLED_WORK_TYPES, run_daily_remediation
+    from aicg.pr_remediation import item_work_key
+
+    workspace = make_security_workspace(tmp_path)
+    manifest = load_manifest(write_minimal_manifest(tmp_path / "aicg-org.yaml"))
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    handled = next(t for t in ("learning_gap", "module_solution_gap") if t in HANDLED_WORK_TYPES)
+    repo = "ai-infra-security-solutions"
+
+    def item(work_id: str, priority: int) -> dict:
+        return {
+            "id": work_id, "work_id": work_id, "type": handled, "repo": repo,
+            "status": "ready", "priority": priority, "title": work_id,
+            "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z",
+        }
+
+    queue = {"schema_version": 1, "work_item_count": 2, "repo_reports": [],
+             "work_items": [item("gap-with-pr", 0), item("gap-fresh", 1)]}
+    (state_dir / "work-queue.json").write_text(_json.dumps(queue))
+
+    picked: list[str] = []
+
+    def fake_process(**kwargs):
+        picked.append(kwargs["item"]["work_id"])
+        return {"status": "generated"}
+
+    with patch(
+        "aicg.pr_remediation.open_pr_work_keys", return_value={item_work_key(repo, "gap-with-pr")}
+    ), patch("aicg.org_runner._process_one_item", side_effect=fake_process):
+        run_daily_remediation(manifest, workspace, state_dir=state_dir)
+
+    assert picked == ["gap-fresh"]
+    after = {i["work_id"]: i for i in _json.loads((state_dir / "work-queue.json").read_text())["work_items"]}
+    assert after["gap-with-pr"]["status"] == "pr_open"
+
+
+def test_daily_remediation_unchanged_when_open_prs_unknown(tmp_path):
+    """gh unavailable -> don't filter (no worse than before)."""
+    import json as _json
+    from unittest.mock import patch
+
+    from aicg.org_runner import HANDLED_WORK_TYPES, run_daily_remediation
+
+    workspace = make_security_workspace(tmp_path)
+    manifest = load_manifest(write_minimal_manifest(tmp_path / "aicg-org.yaml"))
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    handled = next(t for t in ("learning_gap", "module_solution_gap") if t in HANDLED_WORK_TYPES)
+    queue = {"schema_version": 1, "work_item_count": 1, "repo_reports": [], "work_items": [{
+        "id": "g", "work_id": "g", "type": handled, "repo": "ai-infra-security-solutions",
+        "status": "ready", "priority": 0, "title": "g",
+        "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"}]}
+    (state_dir / "work-queue.json").write_text(_json.dumps(queue))
+    picked: list[str] = []
+    with patch("aicg.pr_remediation.open_pr_work_keys", return_value=None), patch(
+        "aicg.org_runner._process_one_item",
+        side_effect=lambda **kw: picked.append(kw["item"]["work_id"]) or {"status": "generated"},
+    ):
+        run_daily_remediation(manifest, workspace, state_dir=state_dir)
+    assert picked == ["g"]
