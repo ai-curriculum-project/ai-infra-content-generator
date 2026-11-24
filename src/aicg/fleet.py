@@ -10,7 +10,10 @@ manifests so they're trivially testable; the CLI layer does the IO.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+import re
+from collections import Counter
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -76,15 +79,33 @@ def read_queue_depth(state_dir: Path) -> int | None:
         data = json.loads(qpath.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
-    items = data.get("items", data) if isinstance(data, dict) else data
-    if not isinstance(items, list):
+    items = _queue_items(data)
+    if items is None:
         return None
-    open_states = {"queued", "pending", "open", "in_progress", "ready"}
     counted = [
         it for it in items
-        if not isinstance(it, dict) or it.get("status", "queued") in open_states
+        if not isinstance(it, dict) or it.get("status", "queued") in _OPEN_QUEUE_STATES
     ]
     return len(counted)
+
+
+_OPEN_QUEUE_STATES = frozenset({"queued", "pending", "open", "in_progress", "ready"})
+
+
+def _queue_items(data: Any) -> list | None:
+    """Extract the item list from a work-queue payload.
+
+    The runner writes ``work_items``; older/test payloads used ``items`` or a
+    bare list. Returns None when no list is present.
+    """
+    if isinstance(data, list):
+        return data
+    if not isinstance(data, dict):
+        return None
+    for key in ("work_items", "items"):
+        if isinstance(data.get(key), list):
+            return data[key]
+    return None
 
 
 def render_fleet_table(statuses: list[DomainStatus]) -> str:
@@ -118,6 +139,172 @@ def render_fleet_table(statuses: list[DomainStatus]) -> str:
     return "\n".join(lines)
 
 
+# --- Daily digest ----------------------------------------------------------
+#
+# The digest used to report only "roles with ≥1 authored module" — a one-way
+# milestone that hit 100% and then read identically every day. It now reports
+# flow: PR health from the steward, the last daily work item's outcome, and
+# actionable queue depth, with an attention block for anything stuck.
+
+STALE_REPORT_HOURS = 36  # steward runs several times a day; >1.5d means it stopped
+OLD_PR_DAYS = 3  # an aicg PR open longer than this is not self-resolving
+_HEAD_REF_DATE = re.compile(r"aicg/(\d{4}-\d{2}-\d{2})/")
+
+
+@dataclass(frozen=True)
+class DomainActivity:
+    """What a domain did / has stuck, derived from its runner state files.
+
+    ``None`` means "no report found" — distinct from zero, so a domain whose
+    steward never ran is not mistaken for a healthy one with no PRs.
+    """
+
+    open_prs: int | None = None
+    blocked_prs: int = 0
+    ci_failed_prs: int = 0
+    oldest_pr_days: int | None = None
+    blocker_reasons: tuple[tuple[str, int], ...] = ()
+    steward_age_hours: float | None = None
+    queue_ready: int | None = None
+    queue_deferred: int | None = None
+    last_item: str | None = None
+    last_item_repo: str | None = None
+    last_item_age_days: int | None = None
+    last_item_problem: bool = False
+
+
+def _parse_ts(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        ts = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+
+
+def _blocker_reason(text: str) -> str:
+    """Collapse a blocker message to its category (drop file lists / periods)."""
+    return text.split(":", 1)[0].strip().rstrip(".")
+
+
+def _summarize_prs(steward: dict, now: datetime) -> dict:
+    repos = [r for r in steward.get("repos") or [] if isinstance(r, dict)]
+    prs = [p for r in repos for p in r.get("prs") or [] if isinstance(p, dict)]
+    reasons: Counter[str] = Counter(
+        _blocker_reason(b) for p in prs for b in p.get("blockers") or [] if isinstance(b, str)
+    )
+    pr_dates = [
+        datetime.fromisoformat(m.group(1)).replace(tzinfo=timezone.utc)
+        for p in prs
+        if (m := _HEAD_REF_DATE.search(str(p.get("head_ref", ""))))
+    ]
+    generated = _parse_ts(steward.get("generated_at"))
+    return {
+        "open_prs": sum(int(r.get("pr_count", 0)) for r in repos),
+        "blocked_prs": sum(
+            int(r.get("blocked_count", 0)) + int(r.get("review_blocked_count", 0)) for r in repos
+        ),
+        "ci_failed_prs": sum(int(r.get("ci_failed_count", 0)) for r in repos),
+        "oldest_pr_days": (now - min(pr_dates)).days if pr_dates else None,
+        "blocker_reasons": tuple(reasons.most_common()),
+        "steward_age_hours": (now - generated).total_seconds() / 3600 if generated else None,
+    }
+
+
+def _summarize_queue(work_queue: Any) -> dict:
+    items = _queue_items(work_queue)
+    if items is None:
+        return {}
+    statuses = [it.get("status") for it in items if isinstance(it, dict)]
+    return {
+        "queue_ready": sum(1 for st in statuses if st in _OPEN_QUEUE_STATES),
+        "queue_deferred": statuses.count("deferred"),
+    }
+
+
+def _last_item_outcome(item: dict) -> tuple[str, bool]:
+    """Human outcome of the last daily work item, and whether it's a problem."""
+    if (item.get("inline_merge") or {}).get("status") == "merged":
+        return "merged", False
+    if (item.get("pr") or {}).get("status") == "opened":
+        return "PR opened", False
+    if item.get("parked_branch"):
+        why = (item.get("verify") or {}).get("status") or "parked"
+        return f"parked ({why})", True
+    status = str(item.get("status") or "unknown")
+    if status == "deferred":
+        return f"deferred: {item.get('defer_reason') or 'unknown'}", True
+    return status, status in {"failed", "error", "verification_failed"}
+
+
+def _summarize_last_item(item: Any, now: datetime) -> dict:
+    if not isinstance(item, dict):
+        return {}
+    outcome, problem = _last_item_outcome(item)
+    selected = item.get("selected") if isinstance(item.get("selected"), dict) else {}
+    ts = _parse_ts(item.get("generated_at"))
+    return {
+        "last_item": outcome,
+        "last_item_repo": selected.get("repo"),
+        "last_item_age_days": (now - ts).days if ts else None,
+        "last_item_problem": problem,
+    }
+
+
+def summarize_activity(
+    *, steward: Any, work_queue: Any, last_item: Any, now: datetime
+) -> DomainActivity:
+    """Derive a DomainActivity from already-loaded state payloads. Pure."""
+    fields: dict[str, Any] = {}
+    if isinstance(steward, dict):
+        fields.update(_summarize_prs(steward, now))
+    fields.update(_summarize_queue(work_queue))
+    fields.update(_summarize_last_item(last_item, now))
+    return DomainActivity(**fields)
+
+
+def _load_json(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def read_domain_activity(state_dir: Path, now: datetime) -> DomainActivity:
+    """Best-effort IO wrapper: load a domain's runner state and summarize it."""
+    return summarize_activity(
+        steward=_load_json(state_dir / "steward-report.json"),
+        work_queue=_load_json(state_dir / "work-queue.json"),
+        last_item=_load_json(state_dir / "daily-item-last.json"),
+        now=now,
+    )
+
+
+def _plural(n: int, word: str) -> str:
+    return f"{n} {word}{'' if n == 1 else 's'}"
+
+
+def attention_flags(a: DomainActivity) -> list[str]:
+    """Things an operator should act on. Empty list = domain is healthy."""
+    flags: list[str] = []
+    if a.blocked_prs:
+        why = ", ".join(f"{r} ×{n}" for r, n in a.blocker_reasons)
+        flags.append(f"{_plural(a.blocked_prs, 'PR')} blocked" + (f" ({why})" if why else ""))
+    if a.ci_failed_prs:
+        flags.append(f"{_plural(a.ci_failed_prs, 'PR')} failing CI")
+    if a.oldest_pr_days is not None and a.oldest_pr_days > OLD_PR_DAYS:
+        flags.append(f"oldest open PR {a.oldest_pr_days}d")
+    if a.last_item_problem:
+        repo = f" — {a.last_item_repo}" if a.last_item_repo else ""
+        flags.append(f"last item {a.last_item}{repo}")
+    if a.steward_age_hours is None and a.open_prs is None:
+        flags.append("no steward report")
+    elif a.steward_age_hours is not None and a.steward_age_hours > STALE_REPORT_HOURS:
+        flags.append(f"steward report stale ({a.steward_age_hours / 24:.0f}d old)")
+    return flags
+
+
 @dataclass(frozen=True)
 class DigestRow:
     domain: str
@@ -125,23 +312,57 @@ class DigestRow:
     bar: int | None
     filled: int  # roles with authored modules
     total: int
+    activity: DomainActivity = field(default_factory=DomainActivity)
+
+
+def _age(days: int | None) -> str:
+    if days is None:
+        return ""
+    return " today" if days == 0 else f" {days}d ago"
+
+
+def _domain_line(r: DigestRow) -> str:
+    a = r.activity
+    parts = []
+    if a.open_prs is None:
+        parts.append("PRs ?")
+    else:
+        bad = [f"{a.blocked_prs} blocked"] if a.blocked_prs else []
+        bad += [f"{a.ci_failed_prs} CI-failing"] if a.ci_failed_prs else []
+        parts.append(f"PRs {a.open_prs}" + (f" ({', '.join(bad)})" if bad else ""))
+    if a.queue_ready is not None:
+        deferred = f" (+{a.queue_deferred} deferred)" if a.queue_deferred else ""
+        parts.append(f"queue {a.queue_ready}{deferred}")
+    if a.last_item:
+        repo = f" {a.last_item_repo}" if a.last_item_repo else ""
+        parts.append(f"last: {a.last_item}{repo}{_age(a.last_item_age_days)}")
+    if r.filled < r.total:  # only worth saying once it regresses / is incomplete
+        parts.append(f"{r.filled}/{r.total} filled")
+    if r.mode != "ACT":
+        parts.append(r.mode)
+    return f"{r.domain}: " + " · ".join(parts)
 
 
 def render_fleet_digest(rows: list[DigestRow], *, date: str = "") -> str:
-    """One compact daily summary line per domain + a fleet total. Pure.
-
-    Built for an ntfy push — short, scannable: filled/total roles, mode, BAR.
-    """
-    head = f"AICG fleet{(' — ' + date) if date else ''}"
-    lines = [head]
-    tf = tt = 0
-    for r in sorted(rows, key=lambda x: x.domain):
-        tf += r.filled
-        tt += r.total
-        bar = f" · BAR {r.bar}" if r.bar is not None else ""
-        lines.append(f"{r.domain}: {r.filled}/{r.total} filled · {r.mode}{bar}")
-    pct = round(100 * tf / tt) if tt else 0
-    lines.append(f"Total: {tf}/{tt} roles ({pct}%) authored")
+    """Daily ntfy digest: attention items first, then one line per domain. Pure."""
+    rows = sorted(rows, key=lambda x: x.domain)
+    lines = [f"AICG fleet{(' — ' + date) if date else ''}"]
+    if not rows:  # a misconfigured runner must not read as an all-clear
+        lines.append("⚠ no domains found — check config/domains/")
+        return "\n".join(lines)
+    attention = [
+        f"⚠ {r.domain}: {flag}" for r in rows for flag in attention_flags(r.activity)
+    ]
+    lines.extend(attention or ["✅ nothing needs attention"])
+    lines.append("")
+    lines.extend(_domain_line(r) for r in rows)
+    acts = [r.activity for r in rows]
+    lines.append(
+        f"Fleet: {sum(a.open_prs or 0 for a in acts)} open PRs "
+        f"({sum(a.blocked_prs for a in acts)} blocked, "
+        f"{sum(a.ci_failed_prs for a in acts)} CI-failing) · "
+        f"queue {sum(a.queue_ready or 0 for a in acts)}"
+    )
     return "\n".join(lines)
 
 

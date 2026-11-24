@@ -95,3 +95,13 @@ def test_existing_domains_stay_pair_model() -> None:
             assert role.repos == (role.learning_repo, role.solution_repo)
         # solution repos still enumerated one-per-role
         assert len(manifest.solution_repo_names) == len(manifest.roles)
+
+
+def test_domain_state_dir_matches_timer_installer_convention(tmp_path):
+    """Mirror scripts/install-domain-timers.sh (STATE_DIR=.aicg/$DOMAIN);
+    the default domain keeps the legacy .aicg/org."""
+    from aicg.domains import domain_state_dir
+
+    assert domain_state_dir("ai-infra", tmp_path) == tmp_path / ".aicg" / "org"
+    assert domain_state_dir(None, tmp_path) == tmp_path / ".aicg" / "org"
+    assert domain_state_dir("ml-engineering", tmp_path) == tmp_path / ".aicg" / "ml-engineering"
