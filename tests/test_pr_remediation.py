@@ -339,3 +339,14 @@ def test_open_pr_work_keys_ignores_fork_prs(tmp_path):
         keys = open_pr_work_keys(tmp_path)
     assert keys == {"r/ours"}
     assert "isCrossRepository" in gh.call_args.args[1][gh.call_args.args[1].index("--json") + 1]
+
+
+def test_marker_mentions_in_code_are_not_markers():
+    """Prose that *documents* the marker (inline code or a fenced example) is
+    not an unresolved claim — PR #35 stayed blocked on four such mentions."""
+    text = (
+        "See the `<!-- needs-research -->` marker in chapter 03.\n"
+        "```md\n<!-- needs-research: example -->\n```\n"
+        "Real claim. <!-- needs-research: cite it -->\n"
+    )
+    assert count_blocking_markers(text) == 1

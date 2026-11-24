@@ -37,7 +37,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from .audit import PLACEHOLDER_PATTERNS
+from .audit import PLACEHOLDER_PATTERNS, mask_code
 
 STALE_PR_DAYS = 7
 MAX_MARKER_ATTEMPTS = 3  # agent resolution attempts per PR before merging with markers
@@ -324,7 +324,8 @@ def open_pr_work_keys(repo_path: Path) -> set[str] | None:
 
 
 def count_blocking_markers(text: str) -> int:
-    return sum(len(PLACEHOLDER_PATTERNS[m].findall(text)) for m in BLOCKING_MARKERS)
+    masked = mask_code(text)
+    return sum(len(PLACEHOLDER_PATTERNS[m].findall(masked)) for m in BLOCKING_MARKERS)
 
 
 def _git(repo_path: Path, *args: str) -> subprocess.CompletedProcess[str]:

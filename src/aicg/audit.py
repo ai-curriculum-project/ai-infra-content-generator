@@ -37,6 +37,20 @@ PLACEHOLDER_PATTERNS = {
     "todo": re.compile(r"\bTODO\b|FIXME|\bTBD\b", re.IGNORECASE),
     "placeholder": re.compile(r"\bplaceholder\b|coming soon|lorem ipsum", re.IGNORECASE),
 }
+_FENCED_CODE = re.compile(r"^(```|~~~).*?^\1[^\n]*$", re.MULTILINE | re.DOTALL)
+_INLINE_CODE = re.compile(r"`[^`\n]+`")
+
+
+def mask_code(text: str) -> str:
+    """Blank out fenced blocks and inline code spans, keeping offsets + newlines.
+
+    A marker inside code is documentation ("see the `<!-- needs-research -->`
+    marker"), not an unresolved claim, so marker counts must ignore it.
+    """
+    blank = lambda m: re.sub(r"[^\n]", " ", m.group(0))  # noqa: E731
+    return _INLINE_CODE.sub(blank, _FENCED_CODE.sub(blank, text))
+
+
 # Learning repos name exercises ``exercise-NN-*``; one (senior-engineer) uses
 # ``lab-NN-*``. Both pair with ``exercise-NN`` on the solutions side.
 EXERCISE_ID_PATTERN = re.compile(r"^((?:exercise|lab)-\d+)")
