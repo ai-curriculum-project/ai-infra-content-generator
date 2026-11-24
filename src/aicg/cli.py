@@ -2055,9 +2055,9 @@ def cmd_fleet_status(args: argparse.Namespace) -> int:
     judge state + BAR, daily budget, and best-effort work-queue depth.
     Makes no writes and no network calls.
     """
-    from .domains import domain_config_path, list_domains
+    from .domains import domain_config_path, domain_state_dir, list_domains
     from .fleet import build_domain_status, read_queue_depth, render_fleet_table
-    from .org_config import load_manifest, state_dir_for_manifest
+    from .org_config import load_manifest
 
     statuses = []
     for domain in list_domains():
@@ -2067,7 +2067,7 @@ def cmd_fleet_status(args: argparse.Namespace) -> int:
         manifest = load_manifest(path)
         queue = None
         try:
-            queue = read_queue_depth(state_dir_for_manifest(manifest))
+            queue = read_queue_depth(domain_state_dir(domain))
         except Exception:
             queue = None
         statuses.append(build_domain_status(domain, manifest, queue_depth=queue))
@@ -2077,16 +2077,21 @@ def cmd_fleet_status(args: argparse.Namespace) -> int:
 
 
 def cmd_fleet_digest(args: argparse.Namespace) -> int:
-    """Compact fill-progress digest across all domains (one line per domain).
+    """Daily activity digest across all domains, pushed once a day via ntfy.
 
-    Counts roles whose learning repo has authored modules (lessons/mod-* or
-    modules/mod-*). Read-only; meant to be pushed once daily via ntfy.
+    Per domain: PR health (steward report), the last daily work item's
+    outcome, actionable queue depth — plus an attention block for anything
+    stuck. Fill progress is shown only while a domain is incomplete.
+    Read-only; reads each domain's state dir and learning repos.
     """
-    from .domains import domain_config_path, list_domains
-    from .fleet import DigestRow, build_domain_status, render_fleet_digest
+    from datetime import datetime, timezone
+
+    from .domains import domain_config_path, domain_state_dir, list_domains
+    from .fleet import DigestRow, build_domain_status, read_domain_activity, render_fleet_digest
     from .org_config import load_manifest
 
     workspace = resolve_workspace(args)
+    now = datetime.now(timezone.utc)
     rows: list = []
     for domain in list_domains():
         path = domain_config_path(domain)
@@ -2106,6 +2111,7 @@ def cmd_fleet_digest(args: argparse.Namespace) -> int:
                 bar=status.freshness_bar,
                 filled=filled,
                 total=len(manifest.roles),
+                activity=read_domain_activity(domain_state_dir(domain), now),
             )
         )
     print(render_fleet_digest(rows, date=args.date))

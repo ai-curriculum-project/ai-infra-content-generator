@@ -34,6 +34,21 @@ def domain_config_path(domain: str | None, runner_root: Path | None = None) -> P
     return domains_dir(runner_root) / f"{domain}.yaml"
 
 
+def domain_state_dir(domain: str | None, runner_root: Path | None = None) -> Path:
+    """Resolve a domain's runner state dir, as the timers actually write it.
+
+    Mirrors ``scripts/install-domain-timers.sh`` (``STATE_DIR=.aicg/$DOMAIN``);
+    the default domain keeps the legacy ``.aicg/org``. Don't use
+    ``state_dir_for_manifest`` for cross-domain reads: every domain manifest
+    sets ``automation.state_dir: .aicg/org`` and the timers override it with
+    ``--state-dir``, so the manifest value would point all domains at ai-infra.
+    """
+    root = _runner_root(runner_root)
+    if not domain or domain == DEFAULT_DOMAIN:
+        return root / ".aicg" / "org"
+    return root / ".aicg" / domain
+
+
 def list_domains(runner_root: Path | None = None) -> list[str]:
     """All registered domains: the default plus any under config/domains/."""
     domains = [DEFAULT_DOMAIN]
